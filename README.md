@@ -19,23 +19,27 @@ Open http://localhost:3000
 ```text
 ALPACA_API_KEY=
 ALPACA_SECRET_KEY=
-ALPACA_DATA_FEED=delayed_sip
+ALPACA_DATA_FEED=
 PORT=3000
 ```
 
-Keys stay on the Node server. They are never sent to the browser, HTML, service worker, or localStorage.
+Set `ALPACA_DATA_FEED` to the delayed consolidated tape when your Alpaca plan includes it. Leave keys blank for DEMO. Keys stay on the Node server. They are never sent to the browser, HTML, service worker, or localStorage.
 
-Without keys the app runs in **DEMO DATA**. Demo numbers are labeled and are not market data.
+Without keys the app runs in **DEMO DATA**. Demo numbers are labeled and are not market data. When Alpaca keys work, DEMO is not used.
 
 ## Data truth
 
 | Field | With Alpaca keys | Without keys |
 |---|---|---|
 | Price, prev close, %, OHLC, volume, candles | Alpaca | DEMO |
-| `delayed_sip` | ~15 min delayed SIP (not labeled live) | — |
+| Delayed consolidated snapshots | ~15 min delayed SIP (not labeled live) | — |
+| Historical candles | SIP history (~16 min cutoff when snapshots are delayed SIP) | DEMO |
 | IEX fallback | Labeled `IEX REAL-TIME` (partial tape) | — |
+| SIP real-time snapshots | Used only if the account is entitled | — |
 | Free float / float % | **N/A** (Alpaca does not provide this) | Simulated and marked DEMO |
 | Scanner coverage | Limited liquid universe + optional Alpaca movers — **not full market** | Simulated sample |
+
+At startup VoltScan probes delayed SIP, IEX, and SIP snapshots and reports the entitlement map on `GET /api/status`. Prefer delayed SIP when the account allows it.
 
 Relative Volume is an approximation (today vs prior-day volume scaled by elapsed regular session). Volatility Score is a deterministic 0–100 scanner blend, not investment advice.
 
@@ -44,3 +48,5 @@ Relative Volume is an approximation (today vs prior-day volume scaled by elapsed
 ```bash
 npm test
 ```
+
+`tests/live-alpaca.test.js` talks to Alpaca when keys are present in the environment, and skips otherwise.

@@ -46,11 +46,16 @@ test("API and original VoltScan UI work in demo mode without Alpaca keys", async
   assert.match(home.body, /VoltScan/);
   assert.match(home.body, /data-route="watchlist"/);
 
-  const appJs = await get(port, "/app.js?v=alpaca1");
+  const appJs = await get(port, "/app.js?v=alpaca2");
   assert.equal(appJs.status, 200);
   assert.match(appJs.body, /function ruleSummary/);
   assert.match(appJs.body, /data-open/);
   assert.match(appJs.body, /data-charttype="candles"/);
+
+  const market = JSON.parse((await get(port, "/api/market?limit=10")).body);
+  assert.ok(market.total > 0, "demo market should list rows when floatMin is omitted");
+  assert.ok(market.rows.length > 0);
+  assert.equal(market.rows[0].source, "DEMO");
 
   const snaps = JSON.parse((await get(port, "/api/snapshots?symbols=AAPL")).body);
   assert.equal(snaps.tickers[0].ticker, "AAPL");
@@ -79,5 +84,5 @@ test("frontend still contains info buttons, charts, and ruleSummary", () => {
   assert.match(js, /data-chartinterval/);
   assert.match(js, /openStockDetail/);
   const sw = fs.readFileSync(path.join(__dirname, "../public/sw.js"), "utf8");
-  assert.match(sw, /voltscan-final-alpaca-v1/);
+  assert.match(sw, /voltscan-final-alpaca-v2/);
 });

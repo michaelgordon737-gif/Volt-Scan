@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
 const { getProvider, getStatus, credentialsFromEnv } = require("./data-provider");
+const { optionalNumber } = require("./data-provider/sources");
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -35,8 +36,7 @@ function safeSymbol(v) {
 }
 
 function n(v) {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
+  return optionalNumber(v);
 }
 
 function filterAndSort(rows, url) {

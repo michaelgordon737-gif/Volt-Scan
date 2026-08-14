@@ -2,7 +2,7 @@
 
 const { DemoMarketDataProvider } = require("./demo-provider");
 const { AlpacaMarketDataProvider, TIMEFRAME_MAP } = require("./alpaca-provider");
-const { SOURCE, displayLabel } = require("./sources");
+const { SOURCE, FEED, displayLabel } = require("./sources");
 const { coverageMeta } = require("./universe");
 
 let singleton = null;
@@ -10,7 +10,7 @@ let singleton = null;
 function credentialsFromEnv(env = process.env) {
   const apiKey = String(env.ALPACA_API_KEY || env.APCA_API_KEY_ID || "").trim();
   const secretKey = String(env.ALPACA_SECRET_KEY || env.APCA_API_SECRET_KEY || "").trim();
-  const preferredFeed = String(env.ALPACA_DATA_FEED || "delayed_sip").trim() || "delayed_sip";
+  const preferredFeed = String(env.ALPACA_DATA_FEED || FEED.SIP_DELAYED).trim() || FEED.SIP_DELAYED;
   return { apiKey, secretKey, preferredFeed, configured: Boolean(apiKey && secretKey) };
 }
 
@@ -49,6 +49,7 @@ function normalizeTimeframe(input) {
 
 module.exports = {
   SOURCE,
+  FEED,
   displayLabel,
   coverageMeta,
   credentialsFromEnv,

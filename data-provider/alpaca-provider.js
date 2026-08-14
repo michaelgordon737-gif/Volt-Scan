@@ -1,6 +1,6 @@
 "use strict";
 
-const { SOURCE, FEED_META } = require("./sources");
+const { SOURCE, FEED, FEED_META, optionalNumber } = require("./sources");
 const { UNIVERSE, lookupName, coverageMeta } = require("./universe");
 const { normalizeRow } = require("./demo-provider");
 
@@ -42,16 +42,17 @@ const FLOAT_UNAVAILABLE = {
 };
 
 class AlpacaMarketDataProvider {
-  constructor({ apiKey, secretKey, preferredFeed = "delayed_sip" }) {
+  constructor({ apiKey, secretKey, preferredFeed = FEED.SIP_DELAYED }) {
     this.id = "alpaca";
     this.name = "ALPACA";
     this.apiKey = apiKey;
     this.secretKey = secretKey;
-    this.preferredFeed = preferredFeed || "delayed_sip";
+    this.preferredFeed = preferredFeed || FEED.SIP_DELAYED;
     this.feed = null;
     this.feedMeta = null;
     this.warning = null;
     this.probeError = null;
+    this.entitlement = {};
     this.moversAvailable = null;
     this._ready = null;
     this._snapCache = new Map();
@@ -65,33 +66,40 @@ class AlpacaMarketDataProvider {
   }
 
   async _probe() {
-    const order = uniqueFeeds([this.preferredFeed, "delayed_sip", "iex"]);
+    const order = uniqueFeeds([this.preferredFeed, FEED.SIP_DELAYED, FEED.IEX, FEED.SIP]);
     const tried = [];
+    this.entitlement = {};
     for (const feed of order) {
       const result = await this._request("/v2/stocks/AAPL/snapshot", { feed }, { allowFail: true });
       tried.push({ feed, status: result.status, error: result.error || null });
-      if (result.ok) {
-        this.feed = feed;
-        this.feedMeta = FEED_META[feed] || FEED_META.delayed_sip;
-        if (feed !== this.preferredFeed) {
-          this.warning = `${this.preferredFeed} is not available on this Alpaca entitlement. Using ${feed} instead. ${
-            (FEED_META[feed] && FEED_META[feed].coverageNote) || ""
-          }`.trim();
-        } else if (FEED_META[feed] && FEED_META[feed].coverageNote) {
-          this.warning = FEED_META[feed].coverageNote;
-        }
-        await this._probeMovers();
-        return this.getStatus();
-      }
+      this.entitlement[feed] = {
+        snapshot: Boolean(result.ok),
+        status: result.status || 0,
+        error: result.ok ? null : (result.error || `HTTP ${result.status}`),
+      };
       if (result.status === 401) {
         this.probeError = "Alpaca authentication failed. Check ALPACA_API_KEY and ALPACA_SECRET_KEY.";
         break;
       }
     }
+    const selected = order.find((feed) => this.entitlement[feed] && this.entitlement[feed].snapshot) || null;
+    if (selected) {
+      this.feed = selected;
+      this.feedMeta = FEED_META[selected] || FEED_META[FEED.SIP_DELAYED];
+      if (selected !== this.preferredFeed) {
+        this.warning = `${this.preferredFeed} is not available on this Alpaca entitlement. Using ${selected} instead. ${
+          (FEED_META[selected] && FEED_META[selected].coverageNote) || ""
+        }`.trim();
+      } else if (FEED_META[selected] && FEED_META[selected].coverageNote) {
+        this.warning = FEED_META[selected].coverageNote;
+      }
+      await this._probeMovers();
+      return this.getStatus();
+    }
     this.probeError =
       this.probeError ||
       `Could not open an Alpaca market-data feed. Tried: ${tried
-        .map((t) => `${t.feed} (${t.status || t.error})`)
+        .map((row) => `${row.feed} (${row.status || row.error})`)
         .join(", ")}`;
     this.feed = null;
     this.feedMeta = null;
@@ -103,6 +111,10 @@ class AlpacaMarketDataProvider {
     this.moversAvailable = Boolean(result.ok);
   }
 
+  _barsFeed() {
+    return this.feed === FEED.SIP_DELAYED ? FEED.SIP : this.feed;
+  }
+
   getStatus() {
     const meta = this.feedMeta;
     const ok = Boolean(this.feed);
@@ -110,6 +122,7 @@ class AlpacaMarketDataProvider {
       mode: "live",
       provider: "Alpaca",
       feed: this.feed,
+      barsFeed: ok ? this._barsFeed() : null,
       source: ok ? meta.source : SOURCE.UNAVAILABLE,
       label: ok ? meta.headerLabel : "ALPACA • UNAVAILABLE",
       delayLabel: ok ? meta.delayLabel : "UNAVAILABLE",
@@ -119,6 +132,7 @@ class AlpacaMarketDataProvider {
       floatAvailable: false,
       warning: this.probeError || this.warning,
       preferredFeed: this.preferredFeed,
+      entitlement: this.entitlement,
       moversAvailable: this.moversAvailable,
       coverage: {
         ...coverageMeta(),
@@ -248,14 +262,18 @@ class AlpacaMarketDataProvider {
   async getMarket() {
     await this.init();
     const refs = await this.getReferenceUniverse();
-    const pricedSymbols = uniqueSymbols([
-      ...UNIVERSE.map((r) => r.symbol),
-      ...refs.slice(0, 0),
-    ]);
+    const refMap = new Map(refs.map((r) => [r.ticker, r]));
+    const pricedSymbols = uniqueSymbols(UNIVERSE.map((r) => r.symbol));
     const { tickers } = await this.getSnapshots(pricedSymbols);
     const snapMap = new Map(tickers.map((t) => [t.ticker, t]));
-    const rows = refs.map((ref) => normalizeRow(ref, snapMap.get(ref.ticker) || null, null));
-    const priced = tickers.filter((t) => t.lastTrade && t.lastTrade.p != null).length;
+    const rows = pricedSymbols.map((sym) =>
+      normalizeRow(
+        refMap.get(sym) || { ticker: sym, name: lookupName(sym), type: "CS", primary_exchange: "" },
+        snapMap.get(sym) || null,
+        null
+      )
+    );
+    const priced = rows.filter((r) => r.price != null).length;
     return {
       rows,
       snapshotError: this.probeError,
@@ -437,7 +455,7 @@ class AlpacaMarketDataProvider {
         end: end.toISOString(),
         limit: Math.min(limit || 1000, 10000),
         adjustment: "split",
-        feed: this.feed === "delayed_sip" ? "sip" : this.feed,
+        feed: this._barsFeed(),
         sort: "asc",
       };
       if (pageToken) params.page_token = pageToken;
@@ -556,8 +574,7 @@ function up(s) {
 }
 
 function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+  return optionalNumber(v);
 }
 
 function sleep(ms) {

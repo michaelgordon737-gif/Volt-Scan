@@ -32,12 +32,13 @@ function ruleSummary(sym){
 function exchangeName(x){return({XNAS:"NASDAQ",XNYS:"NYSE",ARCX:"NYSE Arca",XASE:"NYSE American",BATS:"Cboe"})[x]||x||"—";}
 
 async function fetchJson(url){const r=await fetch(url),d=await r.json();if(!r.ok)throw new Error(d.error||"Request failed");return d;}
-async function loadStatus(){try{const d=await fetchJson("/api/status");state.mode=d.mode;state.status=d;modeBadge.textContent=d.label||d.delayLabel||state.mode.toUpperCase();modeBadge.classList.toggle("live",Boolean(d.live));modeBadge.classList.toggle("delayed",d.feed==="delayed_sip");modeBadge.classList.toggle("demo",d.mode==="demo");}catch{}}
+async function loadStatus(){try{const d=await fetchJson("/api/status");state.mode=d.mode;state.status=d;modeBadge.textContent=d.label||d.delayLabel||state.mode.toUpperCase();modeBadge.classList.toggle("live",Boolean(d.live));modeBadge.classList.toggle("delayed",d.delayLabel==="15 MIN DELAYED");modeBadge.classList.toggle("demo",d.mode==="demo");}catch{}}
 async function loadWatchlist(){if(!state.watchlist.length)return;try{const d=await fetchJson(`/api/snapshots?symbols=${encodeURIComponent(state.watchlist.join(","))}`);for(const s of d.tickers||[])if(s?.ticker)state.snapshots[s.ticker]=s;}catch(e){if(state.mode==="live")toast(`Watchlist price data: ${e.message}`);}}
 async function loadGainers(){try{const d=await fetchJson("/api/gainers");state.gainers=d.tickers||[];state.gainerRows=d.rows||[];for(const s of state.gainers)if(s?.ticker)state.snapshots[s.ticker]=s;state.gainersPriceAvailable=d.priceDataAvailable!==false;}catch(e){state.gainers=[];state.gainerRows=[];state.gainersPriceAvailable=false;}}
 
 function marketQuery(){
-  const m=state.market,p=new URLSearchParams({page:String(m.page),limit:String(m.limit),sort:m.sort,search:m.search,volumeMin:m.volumeMin,commonOnly:String(m.commonOnly)});
+  const m=state.market,p=new URLSearchParams({page:String(m.page),limit:String(m.limit),sort:m.sort,search:m.search,commonOnly:String(m.commonOnly)});
+  if(m.volumeMin && Number(m.volumeMin)>0)p.set("volumeMin",String(m.volumeMin));
   if(m.priceBand==="under1")p.set("priceMax","1"); if(m.priceBand==="1to5"){p.set("priceMin","1");p.set("priceMax","5");} if(m.priceBand==="5to20"){p.set("priceMin","5");p.set("priceMax","20");} if(m.priceBand==="20plus")p.set("priceMin","20");
   if(m.floatBand==="under5")p.set("floatMax","5000000"); if(m.floatBand==="under10")p.set("floatMax","10000000"); if(m.floatBand==="under20")p.set("floatMax","20000000"); if(m.floatBand==="under50")p.set("floatMax","50000000"); if(m.floatBand==="50plus")p.set("floatMin","50000000");
   return p.toString();

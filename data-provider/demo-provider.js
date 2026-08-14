@@ -1,6 +1,6 @@
 "use strict";
 
-const { SOURCE } = require("./sources");
+const { SOURCE, optionalNumber } = require("./sources");
 const { UNIVERSE, lookupName, coverageMeta } = require("./universe");
 
 const DEMO_SYMBOLS = [
@@ -120,13 +120,12 @@ function normalizeRow(ref, snap, flt) {
     floatPct: flt && flt.free_float_percent != null ? flt.free_float_percent : null,
     floatDate: (flt && flt.effective_date) || null,
     raw: snap || null,
-    source: (snap && snap.source) || SOURCE.DEMO,
+    source: (snap && snap.source) || SOURCE.UNAVAILABLE,
   };
 }
 
 function num(v) {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
+  return optionalNumber(v);
 }
 
 class DemoMarketDataProvider {
