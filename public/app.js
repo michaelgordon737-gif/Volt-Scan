@@ -161,6 +161,21 @@ document.addEventListener("click",e=>{
 
 document.addEventListener("keydown",e=>{if(e.key!=="Enter"&&e.key!==" ")return;const target=e.target instanceof Element?e.target:null;const row=target?.closest("[data-open]");if(!row||target.closest("button,input,select,a"))return;e.preventDefault();state.detailSymbol=row.dataset.open;state.chartHover=null;render();loadTickerDetail(state.detailSymbol);});
 
+function fitUiToMonitor(){
+  const vv=window.visualViewport;
+  const w=Math.max(320,Math.round(vv?.width||document.documentElement.clientWidth||window.innerWidth));
+  const h=Math.max(320,Math.round(vv?.height||document.documentElement.clientHeight||window.innerHeight));
+  const root=document.documentElement;
+  root.style.setProperty("--vpw",`${w}px`);
+  root.style.setProperty("--vph",`${h}px`);
+  root.style.setProperty("--page-pad",`${Math.round(Math.min(Math.max(w*0.02,14),40))}px`);
+  root.classList.toggle("wide-monitor",w>=900);
+}
+fitUiToMonitor();
+window.addEventListener("resize",fitUiToMonitor);
+window.visualViewport?.addEventListener("resize",fitUiToMonitor);
+window.visualViewport?.addEventListener("scroll",fitUiToMonitor);
+
 document.getElementById("notifyBtn").addEventListener("click",enableNotifications);
 symbolInput.addEventListener("input",()=>{const sym=symbolInput.value.toUpperCase().replace(/[^A-Z0-9.\-]/g,"");symbolInput.value=sym;addPreview.innerHTML=sym?`<div class="settings-row"><div><strong>${esc(sym)}</strong><small>Ticker symbol</small></div><span>${state.watchlist.includes(sym)?"Already added":"Ready to add"}</span></div>`:"";});
 addForm.addEventListener("submit",e=>{e.preventDefault();const sym=symbolInput.value.trim().toUpperCase();if(!sym)return;addStock(sym);addDialog.close();});

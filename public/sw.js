@@ -1,5 +1,5 @@
-const CACHE = "voltscan-final-alpaca-v2";
-const ASSETS = ["/","/index.html","/styles.css?v=alpaca2","/app.js?v=alpaca2","/manifest.json","/icon.svg"];
+const CACHE = "voltscan-final-monitor-v1";
+const ASSETS = ["/","/index.html","/styles.css?v=monitor1","/app.js?v=monitor1","/manifest.json","/icon.svg"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));

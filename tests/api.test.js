@@ -83,6 +83,7 @@ test("frontend still contains info buttons, charts, and ruleSummary", () => {
   assert.match(js, /data-charttype="candles"/);
   assert.match(js, /data-chartinterval/);
   assert.match(js, /openStockDetail/);
+  assert.match(js, /function fitUiToMonitor/);
   const sw = fs.readFileSync(path.join(__dirname, "../public/sw.js"), "utf8");
-  assert.match(sw, /voltscan-final-alpaca-v2/);
+  assert.match(sw, /voltscan-final-monitor-v1/);
 });
