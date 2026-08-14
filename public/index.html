@@ -1,45 +1,88 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#070b14" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="VoltScan" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>VoltScan</title>
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-  <link rel="stylesheet" href="/css/app.css?v=3" />
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css?v=alpaca1">
 </head>
 <body>
-  <div id="app">
+  <div class="app-shell">
     <header class="topbar">
-      <button class="brand" id="brand-btn" type="button" aria-label="Home">
-        <span class="bolt" aria-hidden="true">⚡</span>
-        <span>VoltScan</span>
-      </button>
-      <div id="data-status" class="status-pill demo" role="status">DEMO DATA</div>
+      <div>
+        <div class="brand-row">
+          <div class="bolt">ϟ</div>
+          <div>
+            <div class="brand">VoltScan</div>
+            <div class="subbrand">Real-time volatility scanner</div>
+          </div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="modeBadge" class="mode-badge">DEMO</span>
+        <button id="notifyBtn" class="icon-btn" aria-label="Enable notifications" title="Enable notifications">🔔</button>
+      </div>
     </header>
-    <div id="banner" class="banner hidden" role="status"></div>
+
     <main id="view" class="view"></main>
-    <nav class="tabbar" aria-label="Main">
-      <button type="button" data-nav="home" class="tab active">
-        <span>⌂</span><span>Home</span>
-      </button>
-      <button type="button" data-nav="watchlist" class="tab">
-        <span>★</span><span>Watch</span>
-      </button>
-      <button type="button" data-nav="gainers" class="tab">
-        <span>▲</span><span>Gainers</span>
-      </button>
-      <button type="button" data-nav="market" class="tab">
-        <span>☰</span><span>Market</span>
-      </button>
+
+    <nav class="bottom-nav" aria-label="Main navigation">
+      <button data-route="home" class="nav-btn active"><span>⌂</span><small>Home</small></button>
+      <button data-route="market" class="nav-btn"><span>▦</span><small>Market</small></button>
+      <button data-route="gainers" class="nav-btn"><span>🔥</span><small>Gainers</small></button>
+      <button data-route="watchlist" class="nav-btn"><span>★</span><small>Watchlist</small></button>
+      <button data-route="alerts" class="nav-btn"><span>🚨</span><small>Alerts</small></button>
+      <button data-route="settings" class="nav-btn"><span>⚙</span><small>Settings</small></button>
     </nav>
   </div>
-  <div id="modal" class="modal hidden" role="dialog" aria-modal="true"></div>
-  <script src="/js/charts.js?v=3"></script>
-  <script src="/js/app.js?v=3"></script>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <dialog id="addDialog" class="modal">
+    <form method="dialog" id="addForm">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow">WATCHLIST</div>
+          <h2>Add a stock</h2>
+        </div>
+        <button value="cancel" class="close-btn" aria-label="Close">×</button>
+      </div>
+      <label class="field-label" for="symbolInput">Ticker symbol</label>
+      <input id="symbolInput" class="text-input" placeholder="e.g. NVDA" autocomplete="off" maxlength="12">
+      <p class="hint">Type the ticker symbol. VoltScan will validate it against the live provider when live mode is enabled.</p>
+      <div id="addPreview" class="add-preview"></div>
+      <button id="confirmAddBtn" value="default" class="primary-btn" type="submit">Add to Watchlist</button>
+    </form>
+  </dialog>
+
+  <dialog id="alertDialog" class="modal">
+    <form method="dialog" id="alertForm">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow">ALERT RULES</div>
+          <h2 id="alertDialogTitle">Alert Settings</h2>
+        </div>
+        <button value="cancel" class="close-btn" aria-label="Close">×</button>
+      </div>
+      <input type="hidden" id="alertSymbol">
+      <label class="toggle-row"><span>Alerts enabled</span><input id="ruleEnabled" type="checkbox"></label>
+      <label class="field-label" for="ruleDaily">Daily move trigger (%)</label>
+      <input id="ruleDaily" class="text-input" type="number" min="0.1" max="100" step="0.1">
+      <label class="field-label" for="ruleMinute">1-minute move trigger (%)</label>
+      <input id="ruleMinute" class="text-input" type="number" min="0.1" max="50" step="0.1">
+      <label class="field-label" for="ruleRvol">Relative volume trigger (×)</label>
+      <input id="ruleRvol" class="text-input" type="number" min="0.5" max="50" step="0.1">
+      <label class="field-label" for="ruleScore">Volatility score trigger</label>
+      <input id="ruleScore" class="text-input" type="number" min="1" max="100" step="1">
+      <button value="default" class="primary-btn" type="submit">Save Alert Rules</button>
+    </form>
+  </dialog>
+
+  <script src="/app.js?v=alpaca1" defer></script>
 </body>
 </html>

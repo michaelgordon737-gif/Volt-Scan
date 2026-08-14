@@ -83,9 +83,8 @@ test("demo snapshots are labeled DEMO and never pretend to be live", async () =>
   assert.equal(status.mode, "demo");
   assert.equal(status.label, "DEMO DATA");
   assert.equal(status.live, false);
-  const snap = await demo.getSnapshot("AAPL");
-  assert.equal(snap.source, SOURCE.DEMO);
-  assert.equal(snap.last.source, SOURCE.DEMO);
-  assert.equal(snap.freeFloat.value, null);
-  assert.equal(snap.freeFloat.source, SOURCE.UNAVAILABLE);
+  const pack = await demo.getTicker("AAPL");
+  assert.equal(pack.ticker.source, SOURCE.DEMO);
+  assert.ok(pack.ticker.lastTrade.p > 0);
+  assert.equal(pack.float.effective_date, "DEMO");
 });

@@ -1,14 +1,8 @@
 "use strict";
 
-const { SOURCE, FEED_META, field, naField } = require("./sources");
+const { SOURCE, FEED_META } = require("./sources");
 const { UNIVERSE, lookupName, coverageMeta } = require("./universe");
-const {
-  volatilityScore,
-  dailyRelativeVolume,
-  pctChange,
-  sessionComparableRvol,
-  shortTermPctFromBars,
-} = require("./metrics");
+const { normalizeRow } = require("./demo-provider");
 
 const DATA_HOST = "https://data.alpaca.markets";
 const TRADE_HOSTS = [
@@ -40,6 +34,13 @@ const BAR_LOOKBACK = {
   "1Day": { days: 260, limit: 300 },
 };
 
+const FLOAT_UNAVAILABLE = {
+  free_float: null,
+  free_float_percent: null,
+  effective_date: null,
+  note: "Float data unavailable from current provider",
+};
+
 class AlpacaMarketDataProvider {
   constructor({ apiKey, secretKey, preferredFeed = "delayed_sip" }) {
     this.id = "alpaca";
@@ -55,6 +56,7 @@ class AlpacaMarketDataProvider {
     this._ready = null;
     this._snapCache = new Map();
     this._cacheMs = 20_000;
+    this._assets = { at: 0, rows: [] };
   }
 
   async init() {
@@ -66,11 +68,7 @@ class AlpacaMarketDataProvider {
     const order = uniqueFeeds([this.preferredFeed, "delayed_sip", "iex"]);
     const tried = [];
     for (const feed of order) {
-      const result = await this._request(
-        `/v2/stocks/AAPL/snapshot`,
-        { feed },
-        { allowFail: true }
-      );
+      const result = await this._request("/v2/stocks/AAPL/snapshot", { feed }, { allowFail: true });
       tried.push({ feed, status: result.status, error: result.error || null });
       if (result.ok) {
         this.feed = feed;
@@ -101,11 +99,7 @@ class AlpacaMarketDataProvider {
   }
 
   async _probeMovers() {
-    const result = await this._request(
-      `/v1beta1/screener/stocks/movers`,
-      { top: 5 },
-      { allowFail: true }
-    );
+    const result = await this._request("/v1beta1/screener/stocks/movers", { top: 5 }, { allowFail: true });
     this.moversAvailable = Boolean(result.ok);
   }
 
@@ -113,19 +107,24 @@ class AlpacaMarketDataProvider {
     const meta = this.feedMeta;
     const ok = Boolean(this.feed);
     return {
-      mode: ok ? "alpaca" : "alpaca_unavailable",
-      provider: "ALPACA",
+      mode: "live",
+      provider: "Alpaca",
       feed: this.feed,
       source: ok ? meta.source : SOURCE.UNAVAILABLE,
       label: ok ? meta.headerLabel : "ALPACA • UNAVAILABLE",
       delayLabel: ok ? meta.delayLabel : "UNAVAILABLE",
       live: ok ? Boolean(meta.live) : false,
+      hasApiKey: true,
       credentialsConfigured: true,
       floatAvailable: false,
       warning: this.probeError || this.warning,
       preferredFeed: this.preferredFeed,
       moversAvailable: this.moversAvailable,
-      coverage: coverageMeta(),
+      coverage: {
+        ...coverageMeta(),
+        fullMarket: false,
+        label: `Limited priced universe (${UNIVERSE.length} liquid U.S. symbols). Not a full-market snapshot.`,
+      },
       probedAt: new Date().toISOString(),
     };
   }
@@ -134,28 +133,22 @@ class AlpacaMarketDataProvider {
     return (this.feedMeta && this.feedMeta.source) || SOURCE.UNAVAILABLE;
   }
 
-  async getQuote(symbol) {
-    return this.getSnapshot(symbol);
-  }
-
-  async getSnapshot(symbol) {
-    const map = await this.getWatchlistSnapshots([symbol]);
-    return map[0] || this._emptySnapshot(symbol, "No snapshot returned");
-  }
-
-  async getWatchlistSnapshots(symbols) {
+  async getSnapshots(symbols) {
     await this.init();
-    const src = this._source();
     const wanted = uniqueSymbols(symbols);
     if (!this.feed) {
-      return wanted.map((s) => this._emptySnapshot(s, this.probeError));
+      return {
+        status: "OK",
+        mode: "live",
+        tickers: wanted.map((s) => this._emptyMassive(s, this.probeError)),
+      };
     }
-    const fresh = [];
-    const missing = [];
     const now = Date.now();
+    const out = [];
+    const missing = [];
     for (const symbol of wanted) {
       const hit = this._snapCache.get(symbol);
-      if (hit && now - hit.at < this._cacheMs) fresh.push(hit.value);
+      if (hit && now - hit.at < this._cacheMs) out.push(hit.value);
       else missing.push(symbol);
     }
     for (const batch of chunk(missing, 50)) {
@@ -164,9 +157,7 @@ class AlpacaMarketDataProvider {
         feed: this.feed,
       });
       if (!result.ok) {
-        for (const symbol of batch) {
-          fresh.push(this._emptySnapshot(symbol, result.error || `HTTP ${result.status}`));
-        }
+        for (const symbol of batch) out.push(this._emptyMassive(symbol, result.error || `HTTP ${result.status}`));
         continue;
       }
       const payload = result.data || {};
@@ -174,304 +165,264 @@ class AlpacaMarketDataProvider {
       for (const symbol of batch) {
         const raw = snaps[symbol] || snaps[symbol.replace(".", "/")] || null;
         const normalized = raw
-          ? this._normalizeSnapshot(symbol, raw, src)
-          : this._emptySnapshot(symbol, "Symbol not returned by Alpaca");
+          ? this._toMassive(symbol, raw)
+          : this._emptyMassive(symbol, "Symbol not returned by Alpaca");
         this._snapCache.set(symbol, { at: Date.now(), value: normalized });
-        fresh.push(normalized);
+        out.push(normalized);
       }
     }
-    const bySym = Object.fromEntries(fresh.map((s) => [s.symbol, s]));
-    return wanted.map((s) => bySym[s] || this._emptySnapshot(s, "Missing snapshot"));
+    const bySym = Object.fromEntries(out.map((s) => [s.ticker, s]));
+    return {
+      status: "OK",
+      mode: "live",
+      tickers: wanted.map((s) => bySym[s] || this._emptyMassive(s, "Missing snapshot")),
+    };
   }
 
-  async getBars(symbol, timeframe, from, to) {
+  async getBars(symbol, interval) {
     await this.init();
-    const tf = TIMEFRAME_MAP[timeframe] || timeframe || "5Min";
+    const tf = TIMEFRAME_MAP[interval] || "5Min";
     const src = this._source();
     if (!this.feed) {
-      return { symbol: up(symbol), timeframe: tf, source: SOURCE.UNAVAILABLE, bars: [], error: this.probeError };
+      return { status: "OK", mode: "live", symbol: up(symbol), interval, bars: [], error: this.probeError };
     }
     const look = BAR_LOOKBACK[tf] || BAR_LOOKBACK["5Min"];
-    const end = to ? new Date(to) : this._historicalEnd();
-    const start = from ? new Date(from) : new Date(end.getTime() - look.days * 24 * 60 * 60 * 1000);
+    const end = this._historicalEnd();
+    const start = new Date(end.getTime() - look.days * 24 * 60 * 60 * 1000);
     let bars;
-    let usedTimeframe = tf;
     try {
       bars = await this._fetchBars(up(symbol), tf, start, end, look.limit);
     } catch (err) {
-      if (tf !== "1Min" && /timeframe|invalid|403|400/i.test(String(err.message))) {
+      if (tf !== "1Min") {
         const minute = await this._fetchBars(up(symbol), "1Min", start, end, 10000);
         bars = aggregateBars(minute, tf);
-        usedTimeframe = tf;
       } else {
         throw err;
       }
     }
     return {
+      status: "OK",
+      mode: "live",
       symbol: up(symbol),
-      timeframe: usedTimeframe,
-      source: src,
-      bars: (bars || []).map((b) => ({
-        t: b.t,
-        o: b.o,
-        h: b.h,
-        l: b.l,
-        c: b.c,
-        v: b.v,
-        n: b.n,
-        vw: b.vw,
+      interval,
+      bars: (bars || []).slice(-120).map((b) => ({
+        t: typeof b.t === "number" ? b.t : Date.parse(b.t),
+        o: num(b.o),
+        h: num(b.h),
+        l: num(b.l),
+        c: num(b.c),
+        v: num(b.v),
         source: src,
-      })),
+      })).filter((b) => Number.isFinite(b.t) && b.o != null && b.h != null && b.l != null && b.c != null),
     };
   }
 
-  async getMarketUniverse() {
+  async getTicker(symbol) {
+    const pack = await this.getSnapshots([symbol]);
+    const ticker = pack.tickers[0] || this._emptyMassive(symbol, "No snapshot");
+    const details = await this._assetDetails(symbol);
     return {
-      coverage: coverageMeta(),
-      symbols: UNIVERSE.map((row) => ({ ...row, source: this._source() })),
+      status: "OK",
+      mode: "live",
+      ticker,
+      details,
+      float: FLOAT_UNAVAILABLE,
     };
   }
 
-  async getMovers() {
+  async getReferenceUniverse() {
+    const assets = await this._getAssets();
+    if (assets.length) return assets;
+    return UNIVERSE.map((row) => ({
+      ticker: row.symbol,
+      name: row.name,
+      type: "CS",
+      primary_exchange: "",
+      market: "stocks",
+      locale: "us",
+      active: true,
+      currency_name: "usd",
+    }));
+  }
+
+  async getMarket() {
     await this.init();
-    const coverage = coverageMeta();
+    const refs = await this.getReferenceUniverse();
+    const pricedSymbols = uniqueSymbols([
+      ...UNIVERSE.map((r) => r.symbol),
+      ...refs.slice(0, 0),
+    ]);
+    const { tickers } = await this.getSnapshots(pricedSymbols);
+    const snapMap = new Map(tickers.map((t) => [t.ticker, t]));
+    const rows = refs.map((ref) => normalizeRow(ref, snapMap.get(ref.ticker) || null, null));
+    const priced = tickers.filter((t) => t.lastTrade && t.lastTrade.p != null).length;
+    return {
+      rows,
+      snapshotError: this.probeError,
+      priceDataAvailable: priced > 0,
+      coverage: {
+        ...coverageMeta(),
+        fullMarket: false,
+        type: refs.length > UNIVERSE.length ? "asset_catalog_plus_limited_prices" : "limited_provider_universe",
+        catalogSize: refs.length,
+        pricedSize: priced,
+        label: refs.length > UNIVERSE.length
+          ? `Alpaca asset catalog (${refs.length} symbols). Live/delayed prices attached for a limited liquid universe (${UNIVERSE.length}), not every listing.`
+          : `Limited priced universe (${UNIVERSE.length} liquid U.S. symbols). Not the full U.S. market.`,
+      },
+    };
+  }
+
+  async getGainers() {
+    await this.init();
     if (!this.feed) {
       return {
-        coverage,
-        source: SOURCE.UNAVAILABLE,
-        gainers: [],
-        highVolume: [],
-        volatile: [],
+        rows: [],
+        tickers: [],
+        priceDataAvailable: false,
         error: this.probeError,
+        coverage: this.getStatus().coverage,
       };
     }
-
-    let screenerGainers = null;
-    let screenerVolume = null;
+    let screener = [];
     if (this.moversAvailable !== false) {
-      const movers = await this._request(
-        `/v1beta1/screener/stocks/movers`,
-        { top: 20 },
-        { allowFail: true }
-      );
-      const actives = await this._request(
-        `/v1beta1/screener/stocks/most-actives`,
-        { by: "volume", top: 20 },
-        { allowFail: true }
-      );
+      const movers = await this._request("/v1beta1/screener/stocks/movers", { top: 20 }, { allowFail: true });
       this.moversAvailable = Boolean(movers.ok);
       if (movers.ok && Array.isArray(movers.data && movers.data.gainers)) {
-        screenerGainers = movers.data.gainers.map((g) => g.symbol).filter(Boolean);
-      }
-      if (actives.ok && Array.isArray(actives.data && actives.data.most_actives)) {
-        screenerVolume = actives.data.most_actives.map((g) => g.symbol).filter(Boolean);
+        screener = movers.data.gainers.map((g) => g.symbol).filter(Boolean);
       }
     }
-
-    const watchExtra = [];
-    const universeSymbols = uniqueSymbols([
-      ...UNIVERSE.map((r) => r.symbol),
-      ...(screenerGainers || []),
-      ...(screenerVolume || []),
-      ...watchExtra,
-    ]);
-    const snaps = await this.getWatchlistSnapshots(universeSymbols);
-    const usable = snaps.filter((s) => s.last.value != null);
-
-    const byPct = [...usable].sort((a, b) => (b.changePct.value || -Infinity) - (a.changePct.value || -Infinity));
-    const byVol = [...usable].sort((a, b) => (b.volume.value || 0) - (a.volume.value || 0));
-    const byScore = [...usable].sort(
-      (a, b) => (b.volatilityScore.value || 0) - (a.volatilityScore.value || 0)
-    );
-
-    const coverageOut = {
-      ...coverage,
-      type: screenerGainers ? "provider_screener_plus_limited_universe" : "limited_provider_universe",
-      fullMarket: false,
-      label: screenerGainers
-        ? `Alpaca movers screener + limited universe (${universeSymbols.length} symbols). Not the full U.S. market.`
-        : `Limited universe (${UNIVERSE.length} liquid U.S. symbols). Not the full U.S. market.`,
-      moversScreener: Boolean(screenerGainers),
-    };
-
+    const symbols = uniqueSymbols([...screener, ...UNIVERSE.map((r) => r.symbol)]);
+    const { tickers } = await this.getSnapshots(symbols);
+    const usable = tickers.filter((t) => t.lastTrade && t.lastTrade.p != null && t.todaysChangePerc != null);
+    const ordered = screener.length
+      ? screener.map((sym) => usable.find((t) => t.ticker === sym)).filter(Boolean)
+      : [...usable].sort((a, b) => (b.todaysChangePerc || -Infinity) - (a.todaysChangePerc || -Infinity));
+    const top = ordered.slice(0, 100);
+    const refs = Object.fromEntries((await this.getReferenceUniverse()).map((r) => [r.ticker, r]));
+    const rows = top.map((snap) => normalizeRow(refs[snap.ticker] || { ticker: snap.ticker, name: lookupName(snap.ticker), type: "CS" }, snap, null));
     return {
-      coverage: coverageOut,
-      source: this._source(),
-      gainers: (screenerGainers
-        ? screenerGainers.map((sym) => usable.find((s) => s.symbol === sym)).filter(Boolean)
-        : byPct
-      ).slice(0, 25),
-      highVolume: (screenerVolume
-        ? screenerVolume.map((sym) => usable.find((s) => s.symbol === sym)).filter(Boolean)
-        : byVol
-      ).slice(0, 25),
-      volatile: byScore.slice(0, 25),
+      rows,
+      tickers: top,
+      priceDataAvailable: top.length > 0,
+      coverage: {
+        ...coverageMeta(),
+        fullMarket: false,
+        moversScreener: Boolean(screener.length),
+        label: screener.length
+          ? `Alpaca movers screener + limited universe. Not guaranteed full-market coverage.`
+          : `Top gainers inside VoltScan limited universe (${UNIVERSE.length} symbols). Not the full U.S. market.`,
+      },
     };
   }
 
-  async getDetail(symbol, timeframe) {
-    await this.init();
-    const src = this._source();
-    const [snap, barsPack, metricsPack] = await Promise.all([
-      this.getSnapshot(symbol),
-      this.getBars(symbol, timeframe || "5Min"),
-      this._computeMetrics(symbol),
-    ]);
-    const rvolField = metricsPack.rvol != null
-      ? field(metricsPack.rvol, src, {
-          method: metricsPack.rvolMethod,
-          approximation: metricsPack.rvolNote,
-          elapsedMinutes: metricsPack.elapsedMinutes,
-          priorCount: metricsPack.priorCount,
-        })
-      : naField(metricsPack.rvolNote || "Relative volume unavailable");
-    const score = volatilityScore({
-      last: snap.last.value,
-      prevClose: snap.prevClose.value,
-      open: snap.open.value,
-      high: snap.high.value,
-      low: snap.low.value,
-      shortTermPct: metricsPack.shortTermPct,
-      rvol: rvolField.value,
-    });
-    return {
-      ...snap,
-      rvol: rvolField,
-      volatilityScore:
-        score == null
-          ? naField("Not enough market data to score")
-          : field(score, src, {
-              note: "Deterministic 0–100 scanner blend of daily move, 30-minute move, RVOL, and intraday range. Not investment advice.",
-            }),
-      bars: barsPack.bars,
-      timeframe: barsPack.timeframe,
-      barsSource: barsPack.source,
-    };
-  }
-
-  async _computeMetrics(symbol) {
-    if (!this.feed) {
-      return { rvol: null, rvolMethod: null, rvolNote: this.probeError, shortTermPct: null };
-    }
-    const end = this._historicalEnd();
-    const start = new Date(end.getTime() - 18 * 24 * 60 * 60 * 1000);
-    let minuteBars = [];
-    try {
-      minuteBars = await this._fetchBars(up(symbol), "1Min", start, end, 10000);
-    } catch (err) {
-      return {
-        rvol: null,
-        rvolMethod: null,
-        rvolNote: `Minute bars unavailable for RVOL (${err.message})`,
-        shortTermPct: null,
-      };
-    }
-    const session = sessionComparableRvol(minuteBars, new Date());
-    let rvol = session.rvol;
-    let method = session.method;
-    let note =
-      "Approximate session-comparable RVOL: today's cumulative regular-session volume versus the average cumulative volume at the same elapsed time over the prior 10 sessions. Not institutional RVOL.";
-    if (rvol == null) {
-      const dailyEnd = this._historicalEnd();
-      const dailyStart = new Date(dailyEnd.getTime() - 30 * 24 * 60 * 60 * 1000);
-      try {
-        const daily = await this._fetchBars(up(symbol), "1Day", dailyStart, dailyEnd, 30);
-        const todayVol = daily.length ? daily[daily.length - 1].v : null;
-        const prior = daily.slice(0, -1).map((b) => b.v);
-        rvol = dailyRelativeVolume(todayVol, prior);
-        method = "daily_vs_adv";
-        note =
-          "Approximate RVOL: current daily volume versus average daily volume of prior sessions (ADV). Session-comparable minute RVOL was unavailable. Not institutional RVOL.";
-      } catch {
-        note = "Relative volume unavailable";
-      }
-    }
-    const last = minuteBars.length ? minuteBars[minuteBars.length - 1].c : null;
-    return {
-      rvol,
-      rvolMethod: method,
-      rvolNote: note,
-      elapsedMinutes: session.elapsedMinutes,
-      priorCount: session.priorCount,
-      shortTermPct: shortTermPctFromBars(minuteBars, last, 30),
-    };
-  }
-
-  _normalizeSnapshot(symbol, raw, src) {
+  _toMassive(symbol, raw) {
     const trade = raw.latestTrade || raw.LatestTrade || null;
     const daily = raw.dailyBar || raw.DailyBar || null;
     const prev = raw.prevDailyBar || raw.PrevDailyBar || null;
     const minute = raw.minuteBar || raw.MinuteBar || null;
-    const last =
-      num(trade && trade.p) ??
-      num(minute && minute.c) ??
-      num(daily && daily.c);
+    const last = num(trade && trade.p) ?? num(minute && minute.c) ?? num(daily && daily.c);
     const prevClose = num(prev && prev.c);
-    const open = num(daily && daily.o);
-    const high = num(daily && daily.h);
-    const low = num(daily && daily.l);
-    const close = num(daily && daily.c) ?? last;
-    const volume = num(daily && daily.v);
-    const changePct = pctChange(last, prevClose);
-    const rvol = null;
-    const score = volatilityScore({
-      last,
-      prevClose,
-      open,
-      high,
-      low,
-      shortTermPct: null,
-      rvol: null,
-    });
+    const change = last != null && prevClose != null ? last - prevClose : null;
+    const changePct = last != null && prevClose ? ((last - prevClose) / prevClose) * 100 : null;
+    const ts = trade && trade.t ? Date.parse(trade.t) : Date.now();
     return {
-      symbol: up(symbol),
-      name: lookupName(symbol),
-      source: src,
-      last: field(last, src),
-      prevClose: field(prevClose, src),
-      changePct: field(changePct, src),
-      open: field(open, src),
-      high: field(high, src),
-      low: field(low, src),
-      close: field(close, src),
-      volume: field(volume, src),
-      rvol: naField("Open the stock for session-comparable RVOL"),
-      volatilityScore:
-        score == null
-          ? naField("Not enough data to score")
-          : field(score, src, { note: "Partial score from daily range/move until detail RVOL loads." }),
-      freeFloat: naField("Float data unavailable from current provider"),
-      floatPct: naField("Float data unavailable from current provider"),
-      sharesOutstanding: naField("Float data unavailable from current provider"),
-      asOf: (trade && trade.t) || (minute && minute.t) || (daily && daily.t) || new Date().toISOString(),
+      ticker: up(symbol),
+      todaysChangePerc: changePct,
+      todaysChange: change,
+      updated: Number.isFinite(ts) ? ts * 1_000_000 : Date.now() * 1_000_000,
+      day: {
+        o: num(daily && daily.o),
+        h: num(daily && daily.h),
+        l: num(daily && daily.l),
+        c: num(daily && daily.c) ?? last,
+        v: num(daily && daily.v),
+      },
+      prevDay: { c: prevClose, v: num(prev && prev.v) },
+      min: {
+        o: num(minute && minute.o),
+        h: num(minute && minute.h),
+        l: num(minute && minute.l),
+        c: num(minute && minute.c) ?? last,
+        v: num(minute && minute.v),
+        av: num(daily && daily.v),
+      },
+      lastTrade: { p: last, t: trade && trade.t },
+      source: this._source(),
     };
   }
 
-  _emptySnapshot(symbol, note) {
+  _emptyMassive(symbol, note) {
     return {
-      symbol: up(symbol),
-      name: lookupName(symbol),
+      ticker: up(symbol),
+      todaysChangePerc: null,
+      todaysChange: null,
+      updated: null,
+      day: { o: null, h: null, l: null, c: null, v: null },
+      prevDay: { c: null, v: null },
+      min: { o: null, h: null, l: null, c: null, v: null, av: null },
+      lastTrade: { p: null },
       source: SOURCE.UNAVAILABLE,
-      last: naField(note),
-      prevClose: naField(note),
-      changePct: naField(note),
-      open: naField(note),
-      high: naField(note),
-      low: naField(note),
-      close: naField(note),
-      volume: naField(note),
-      rvol: naField(note),
-      volatilityScore: naField(note),
-      freeFloat: naField("Float data unavailable from current provider"),
-      floatPct: naField("Float data unavailable from current provider"),
-      sharesOutstanding: naField("Float data unavailable from current provider"),
-      asOf: null,
       error: note || null,
     };
   }
 
+  async _assetDetails(symbol) {
+    const refs = await this.getReferenceUniverse();
+    const hit = refs.find((r) => r.ticker === up(symbol));
+    if (hit) return hit;
+    return {
+      ticker: up(symbol),
+      name: lookupName(symbol),
+      type: "CS",
+      primary_exchange: "",
+      market: "stocks",
+      locale: "us",
+      active: true,
+      currency_name: "usd",
+    };
+  }
+
+  async _getAssets() {
+    if (Date.now() - this._assets.at < 12 * 60 * 60 * 1000 && this._assets.rows.length) {
+      return this._assets.rows;
+    }
+    for (const host of TRADE_HOSTS) {
+      try {
+        const url = `${host}/v2/assets?status=active&asset_class=us_equity`;
+        const res = await fetch(url, {
+          headers: {
+            "APCA-API-KEY-ID": this.apiKey,
+            "APCA-API-SECRET-KEY": this.secretKey,
+            accept: "application/json",
+          },
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+        const rows = (Array.isArray(data) ? data : [])
+          .filter((a) => a && a.tradable && a.status === "active")
+          .map((a) => ({
+            ticker: up(a.symbol),
+            name: a.name || a.symbol,
+            type: "CS",
+            primary_exchange: a.exchange || "",
+            market: "stocks",
+            locale: "us",
+            active: true,
+            currency_name: "usd",
+          }));
+        if (rows.length) {
+          this._assets = { at: Date.now(), rows };
+          return rows;
+        }
+      } catch {
+        /* try next host */
+      }
+    }
+    return [];
+  }
+
   _historicalEnd() {
-    // Basic plans cannot request SIP history through the last 15 minutes.
     if (this.feed === "iex") return new Date();
     return new Date(Date.now() - 16 * 60 * 1000);
   }
@@ -491,9 +442,7 @@ class AlpacaMarketDataProvider {
       };
       if (pageToken) params.page_token = pageToken;
       const result = await this._request(`/v2/stocks/${encodeURIComponent(symbol)}/bars`, params);
-      if (!result.ok) {
-        throw new Error(result.error || `Bars HTTP ${result.status}`);
-      }
+      if (!result.ok) throw new Error(result.error || `Bars HTTP ${result.status}`);
       const chunkBars = (result.data && (result.data.bars || result.data.Bars)) || [];
       bars.push(...chunkBars);
       pageToken = result.data && result.data.next_page_token;
@@ -531,10 +480,7 @@ class AlpacaMarketDataProvider {
           continue;
         }
         if (!res.ok) {
-          const msg =
-            (data && (data.message || data.error)) ||
-            text ||
-            `HTTP ${res.status}`;
+          const msg = (data && (data.message || data.error)) || text || `HTTP ${res.status}`;
           return { ok: false, status: res.status, error: String(msg).slice(0, 400), data };
         }
         return { ok: true, status: res.status, data };
@@ -570,14 +516,12 @@ function aggregateBars(minuteBars, timeframe) {
         l: bar.l,
         c: bar.c,
         v: bar.v || 0,
-        n: bar.n || 0,
       });
     } else {
       g.h = Math.max(g.h, bar.h);
       g.l = Math.min(g.l, bar.l);
       g.c = bar.c;
       g.v += bar.v || 0;
-      g.n += bar.n || 0;
     }
   }
   return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
@@ -585,9 +529,7 @@ function aggregateBars(minuteBars, timeframe) {
 
 function uniqueFeeds(list) {
   const out = [];
-  for (const f of list) {
-    if (f && !out.includes(f)) out.push(f);
-  }
+  for (const f of list) if (f && !out.includes(f)) out.push(f);
   return out;
 }
 

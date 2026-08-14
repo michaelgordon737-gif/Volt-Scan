@@ -2,179 +2,228 @@
 
 require("dotenv").config();
 
+const http = require("http");
+const fs = require("fs");
 const path = require("path");
-const express = require("express");
-const { getProvider, getStatus, normalizeTimeframe, credentialsFromEnv } = require("./data-provider");
+const { URL } = require("url");
+const { getProvider, getStatus, credentialsFromEnv } = require("./data-provider");
 
-const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const PUBLIC_DIR = path.join(__dirname, "public");
 
-app.disable("x-powered-by");
-app.use(express.json({ limit: "32kb" }));
+const mime = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".webp": "image/webp",
+};
 
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api")) {
-    res.set("Cache-Control", "no-store");
-  }
-  next();
-});
-
-function asyncRoute(fn) {
-  return (req, res, next) => {
-    Promise.resolve(fn(req, res)).catch(next);
-  };
+function sendJson(res, status, data) {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(JSON.stringify(data));
 }
 
-function parseSymbols(input) {
-  if (!input) return [];
-  return String(input)
-    .split(",")
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean)
-    .slice(0, 80);
+function safeSymbol(v) {
+  return String(v || "").toUpperCase().replace(/[^A-Z0-9.\-]/g, "").slice(0, 15);
 }
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "voltscan" });
-});
+function n(v) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+}
 
-app.get(
-  "/api/status",
-  asyncRoute(async (_req, res) => {
+function filterAndSort(rows, url) {
+  let out = rows;
+  const q = (url.searchParams.get("search") || "").trim().toLowerCase();
+  const priceMax = n(url.searchParams.get("priceMax"));
+  const priceMin = n(url.searchParams.get("priceMin"));
+  const floatMax = n(url.searchParams.get("floatMax"));
+  const floatMin = n(url.searchParams.get("floatMin"));
+  const volumeMin = n(url.searchParams.get("volumeMin"));
+  const gainMin = n(url.searchParams.get("gainMin"));
+  const commonOnly = url.searchParams.get("commonOnly") === "true";
+  if (q) out = out.filter((r) => r.ticker.toLowerCase().includes(q) || String(r.name || "").toLowerCase().includes(q));
+  if (priceMin !== null) out = out.filter((r) => r.price !== null && r.price >= priceMin);
+  if (priceMax !== null) out = out.filter((r) => r.price !== null && r.price <= priceMax);
+  if (floatMin !== null) out = out.filter((r) => r.float !== null && r.float >= floatMin);
+  if (floatMax !== null) out = out.filter((r) => r.float !== null && r.float <= floatMax);
+  if (volumeMin !== null) out = out.filter((r) => r.volume !== null && r.volume >= volumeMin);
+  if (gainMin !== null) out = out.filter((r) => r.changePct !== null && r.changePct >= gainMin);
+  if (commonOnly) out = out.filter((r) => r.type === "CS");
+  const sort = url.searchParams.get("sort") || "gain";
+  const cmp = {
+    gain: (a, b) => (b.changePct ?? -Infinity) - (a.changePct ?? -Infinity),
+    volume: (a, b) => (b.volume ?? -Infinity) - (a.volume ?? -Infinity),
+    float: (a, b) => (a.float ?? Infinity) - (b.float ?? Infinity),
+    price: (a, b) => (a.price ?? Infinity) - (b.price ?? Infinity),
+    ticker: (a, b) => a.ticker.localeCompare(b.ticker),
+  }[sort] || ((a, b) => a.ticker.localeCompare(b.ticker));
+  return out.sort(cmp);
+}
+
+async function handleApi(req, res, url) {
+  if (url.pathname === "/api/status") {
     const creds = credentialsFromEnv();
     const status = await getStatus();
-    res.json({
+    return sendJson(res, 200, {
       ...status,
-      credentialsConfigured: creds.configured,
+      hasApiKey: creds.configured,
       notifications: {
         browser: true,
         closedAppPush: false,
         note: "Browser notifications only work while VoltScan is open and scanning. Closed-app push is not implemented.",
       },
     });
-  })
-);
+  }
 
-app.get(
-  "/api/universe",
-  asyncRoute(async (req, res) => {
-    const provider = await getProvider();
-    const data = await provider.getMarketUniverse();
-    const q = String(req.query.q || "").trim().toUpperCase();
-    if (q) {
-      data.symbols = data.symbols.filter(
-        (row) => row.symbol.includes(q) || String(row.name || "").toUpperCase().includes(q)
-      );
+  const provider = await getProvider();
+  const mode = provider.getStatus().mode;
+
+  if (url.pathname === "/api/market") {
+    try {
+      const source = await provider.getMarket();
+      const filtered = filterAndSort(source.rows, url);
+      const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+      const limit = Math.min(200, Math.max(10, Number(url.searchParams.get("limit") || 50)));
+      const start = (page - 1) * limit;
+      return sendJson(res, 200, {
+        status: "OK",
+        mode,
+        priceDataAvailable: source.priceDataAvailable,
+        snapshotError: source.snapshotError,
+        coverage: source.coverage,
+        total: filtered.length,
+        page,
+        limit,
+        rows: filtered.slice(start, start + limit),
+      });
+    } catch (e) {
+      return sendJson(res, 502, { error: e.message });
     }
-    res.json(data);
-  })
-);
+  }
 
-app.get(
-  "/api/snapshots",
-  asyncRoute(async (req, res) => {
-    const symbols = parseSymbols(req.query.symbols);
-    if (!symbols.length) {
-      res.status(400).json({ error: "symbols query required" });
-      return;
+  if (url.pathname === "/api/gainers") {
+    try {
+      const source = await provider.getGainers();
+      return sendJson(res, 200, {
+        status: "OK",
+        mode,
+        rows: source.rows || [],
+        tickers: source.tickers || [],
+        priceDataAvailable: source.priceDataAvailable !== false,
+        coverage: source.coverage,
+        error: source.error || null,
+      });
+    } catch (e) {
+      return sendJson(res, 502, { error: e.message });
     }
-    const provider = await getProvider();
-    const snapshots = await provider.getWatchlistSnapshots(symbols);
-    res.json({ snapshots, status: provider.getStatus() });
-  })
-);
+  }
 
-app.get(
-  "/api/quote/:symbol",
-  asyncRoute(async (req, res) => {
-    const provider = await getProvider();
-    const snapshot = await provider.getQuote(req.params.symbol);
-    res.json(snapshot);
-  })
-);
-
-app.get(
-  "/api/snapshot/:symbol",
-  asyncRoute(async (req, res) => {
-    const provider = await getProvider();
-    const snapshot = await provider.getSnapshot(req.params.symbol);
-    res.json(snapshot);
-  })
-);
-
-app.get(
-  "/api/bars/:symbol",
-  asyncRoute(async (req, res) => {
-    const provider = await getProvider();
-    const timeframe = normalizeTimeframe(req.query.timeframe);
-    const data = await provider.getBars(req.params.symbol, timeframe, req.query.from, req.query.to);
-    res.json(data);
-  })
-);
-
-app.get(
-  "/api/detail/:symbol",
-  asyncRoute(async (req, res) => {
-    const provider = await getProvider();
-    const timeframe = normalizeTimeframe(req.query.timeframe || "5Min");
-    const detail = await provider.getDetail(req.params.symbol, timeframe);
-    res.json({ ...detail, status: provider.getStatus() });
-  })
-);
-
-app.get(
-  "/api/scanner",
-  asyncRoute(async (_req, res) => {
-    const provider = await getProvider();
-    const movers = await provider.getMovers();
-    res.json({ ...movers, status: provider.getStatus() });
-  })
-);
-
-app.use(
-  express.static(path.join(__dirname, "public"), {
-    etag: true,
-    maxAge: 0,
-    setHeaders(res, filePath) {
-      if (filePath.endsWith(".js") || filePath.endsWith(".css") || filePath.endsWith(".html")) {
-        res.setHeader("Cache-Control", "no-cache");
-      }
-    },
-  })
-);
-
-app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/api")) return next();
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({
-    error: err.message || "Server error",
-    source: "UNAVAILABLE",
-  });
-});
-
-async function main() {
-  const status = await getStatus();
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`VoltScan http://localhost:${PORT}`);
-    console.log(`Data: ${status.label}`);
-    if (status.warning) console.warn(`Warning: ${status.warning}`);
-  });
-  server.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      console.error(`Port ${PORT} is already in use. Set PORT to another value.`);
-    } else {
-      console.error(err);
+  if (url.pathname === "/api/snapshots") {
+    const syms = [...new Set((url.searchParams.get("symbols") || "").split(",").map(safeSymbol).filter(Boolean).slice(0, 50))];
+    if (!syms.length) return sendJson(res, 400, { error: "No symbols supplied." });
+    try {
+      const data = await provider.getSnapshots(syms);
+      return sendJson(res, 200, { ...data, mode });
+    } catch (e) {
+      return sendJson(res, 502, { error: e.message });
     }
-    process.exit(1);
+  }
+
+  if (url.pathname.startsWith("/api/bars/")) {
+    const sym = safeSymbol(decodeURIComponent(url.pathname.split("/").pop()));
+    const interval = String(url.searchParams.get("interval") || "5m");
+    if (!sym) return sendJson(res, 400, { error: "Invalid symbol." });
+    if (!["1m", "5m", "15m", "30m", "1h", "1d"].includes(interval)) {
+      return sendJson(res, 400, { error: "Unsupported interval." });
+    }
+    try {
+      const data = await provider.getBars(sym, interval);
+      return sendJson(res, 200, { ...data, mode });
+    } catch (e) {
+      return sendJson(res, 502, { error: e.message });
+    }
+  }
+
+  if (url.pathname.startsWith("/api/ticker/")) {
+    const sym = safeSymbol(decodeURIComponent(url.pathname.split("/").pop()));
+    if (!sym) return sendJson(res, 400, { error: "Invalid symbol." });
+    try {
+      const data = await provider.getTicker(sym);
+      return sendJson(res, 200, { ...data, mode });
+    } catch (e) {
+      return sendJson(res, 502, { error: e.message });
+    }
+  }
+
+  return sendJson(res, 404, { error: "Unknown API route." });
+}
+
+function serveStatic(req, res, url) {
+  let rel = decodeURIComponent(url.pathname);
+  if (rel === "/") rel = "/index.html";
+  const normalized = path.normalize(rel).replace(/^(\.\.[/\\])+/, "");
+  const filePath = path.join(PUBLIC_DIR, normalized);
+  if (!filePath.startsWith(PUBLIC_DIR)) {
+    res.writeHead(403);
+    return res.end("Forbidden");
+  }
+  fs.stat(filePath, (err, stat) => {
+    if (err || !stat.isFile()) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      return res.end("Not found");
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    const noCache = ext === ".html" || ext === ".js" || ext === ".css";
+    res.writeHead(200, {
+      "Content-Type": mime[ext] || "application/octet-stream",
+      "Cache-Control": noCache ? "no-cache" : "public, max-age=300",
+    });
+    fs.createReadStream(filePath).pipe(res);
   });
 }
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "voltscan" });
+    if (url.pathname.startsWith("/api/")) return handleApi(req, res, url);
+    return serveStatic(req, res, url);
+  } catch (err) {
+    console.error(err);
+    if (!res.headersSent) sendJson(res, 500, { error: err.message || "Server error" });
+  }
+});
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use. Set PORT to another value.`);
+  } else {
+    console.error(err);
+  }
+  process.exit(1);
+});
 
 if (require.main === module) {
-  main();
+  getStatus()
+    .then((status) => {
+      server.listen(PORT, "0.0.0.0", () => {
+        console.log(`VoltScan Final running at http://localhost:${PORT}`);
+        console.log(`Data: ${status.label}`);
+        if (status.warning) console.warn(`Warning: ${status.warning}`);
+      });
+    })
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
 }
 
-module.exports = { app, main };
+module.exports = { server, handleApi };

@@ -1,42 +1,132 @@
 "use strict";
 
-const { SOURCE, field, naField } = require("./sources");
+const { SOURCE } = require("./sources");
 const { UNIVERSE, lookupName, coverageMeta } = require("./universe");
-const {
-  volatilityScore,
-  dailyRelativeVolume,
-  pctChange,
-  shortTermPctFromBars,
-} = require("./metrics");
 
-const TIMEFRAME_MINUTES = {
-  "1Min": 1,
-  "5Min": 5,
-  "15Min": 15,
-  "30Min": 30,
-  "1Hour": 60,
-  "1Day": 390,
+const DEMO_SYMBOLS = [
+  "OFA","PLAG","NVDA","AMD","AAPL","TSLA","MSFT","AMZN","META","SOFI",
+  "RGTI","IONQ","ACHR","RKLB","SMCI","MARA","RIOT","COIN","HOOD","GME",
+  "AMC","SOUN","QBTS","BBAI","LCID","NIO","F","BAC","INTC","MU"
+];
+const DEMO_BASE = {
+  OFA:3.84,PLAG:6.21,NVDA:184.42,AMD:177.16,AAPL:231.18,TSLA:328.44,
+  MSFT:521.23,AMZN:225.10,META:758.20,SOFI:24.31
 };
 
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function rand() {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+function hashSymbol(sym) {
+  return [...String(sym)].reduce((a, c) => ((a * 31) + c.charCodeAt(0)) >>> 0, 7);
+}
+
+function demoFloat(sym) {
+  const h = hashSymbol(sym);
+  return {
+    free_float: 1_500_000 + (h % 180_000_000),
+    free_float_percent: 25 + (h % 7300) / 100,
+    effective_date: "DEMO",
   };
 }
 
-function hashSymbol(symbol) {
-  const s = String(symbol || "X");
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+function demoSnapshot(sym) {
+  const h = hashSymbol(sym);
+  const base = DEMO_BASE[sym] || (1 + (h % 30000) / 100);
+  const now = Date.now();
+  const wave = Math.sin((now / 48000) + h) * (0.004 + (h % 17) / 3000);
+  const burst = ((h + Math.floor(now / 180000)) % 11 === 0) ? 0.03 : 0;
+  const price = Math.max(0.05, base * (1 + wave + burst));
+  const daily = (((h % 3200) - 800) / 100) + wave * 100 + burst * 100;
+  const prev = price / (1 + daily / 100);
+  const open = prev * (1 + ((h % 300) - 120) / 10000);
+  const high = Math.max(price, open) * (1.01 + (h % 20) / 1000);
+  const low = Math.min(price, open) * (0.99 - (h % 12) / 1200);
+  const prevVol = 400000 + (h % 9_000_000);
+  const dayVol = Math.round(prevVol * (0.2 + (h % 260) / 100));
+  const minOpen = price / (1 + wave * 1.8);
+  return {
+    ticker: sym,
+    todaysChangePerc: daily,
+    todaysChange: price - prev,
+    updated: now * 1_000_000,
+    day: { o: open, h: high, l: low, c: price, v: dayVol },
+    prevDay: { c: prev, v: prevVol },
+    min: {
+      o: minOpen,
+      h: Math.max(price, minOpen) * 1.002,
+      l: Math.min(price, minOpen) * 0.998,
+      c: price,
+      v: 2000 + (h % 180000),
+      av: dayVol,
+    },
+    lastTrade: { p: price },
+    source: SOURCE.DEMO,
+  };
+}
+
+function demoRef(sym) {
+  return {
+    ticker: sym,
+    name: lookupName(sym) !== sym ? lookupName(sym) : `${sym} Demo Company`,
+    market: "stocks",
+    locale: "us",
+    primary_exchange: (hashSymbol(sym) % 2 ? "XNAS" : "XNYS"),
+    type: "CS",
+    active: true,
+    currency_name: "usd",
+  };
+}
+
+function demoBars(sym, interval = "5m", count = 72) {
+  const spec = {
+    "1m": [1, "minute"], "5m": [5, "minute"], "15m": [15, "minute"],
+    "30m": [30, "minute"], "1h": [1, "hour"], "1d": [1, "day"],
+  }[interval] || [5, "minute"];
+  const stepMs = spec[1] === "day" ? 86400000 : spec[1] === "hour" ? 3600000 : spec[0] * 60000;
+  const h = hashSymbol(sym);
+  const base = DEMO_BASE[sym] || (1 + (h % 30000) / 100);
+  const now = Date.now();
+  let price = base * (0.96 + ((h % 80) / 1000));
+  const out = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const t = now - i * stepMs;
+    const idx = count - 1 - i;
+    const wave = Math.sin(idx * 0.48 + h * 0.07) * (0.006 + (h % 9) / 2600);
+    const drift = (idx / count) * (((h % 17) - 6) / 900);
+    const o = Math.max(0.03, price);
+    const c = Math.max(0.03, o * (1 + wave + drift / count));
+    const spread = 0.0025 + Math.abs(Math.sin(idx * 0.73 + h)) * 0.006;
+    const hi = Math.max(o, c) * (1 + spread);
+    const lo = Math.min(o, c) * (1 - spread * 0.85);
+    const v = Math.round((25000 + (h % 420000)) * (0.45 + Math.abs(Math.sin(idx * 0.31 + h * 0.13)) * 2.2));
+    out.push({ t, o, h: hi, l: lo, c, v, source: SOURCE.DEMO });
+    price = c;
   }
-  return h >>> 0;
+  return out;
+}
+
+function normalizeRow(ref, snap, flt) {
+  const ticker = (snap && snap.ticker) || (ref && ref.ticker) || "";
+  const price = num(snap && (snap.lastTrade && snap.lastTrade.p != null ? snap.lastTrade.p : snap.min && snap.min.c != null ? snap.min.c : snap.day && snap.day.c));
+  return {
+    ticker,
+    name: (ref && ref.name) || "",
+    type: (ref && ref.type) || "",
+    exchange: (ref && ref.primary_exchange) || "",
+    price,
+    changePct: num(snap && snap.todaysChangePerc),
+    volume: num(snap && ((snap.day && snap.day.v) || (snap.min && snap.min.av))),
+    minuteOpen: num(snap && snap.min && snap.min.o),
+    minuteClose: num(snap && snap.min && snap.min.c),
+    prevVolume: num(snap && snap.prevDay && snap.prevDay.v),
+    float: flt && flt.free_float != null ? flt.free_float : null,
+    floatPct: flt && flt.free_float_percent != null ? flt.free_float_percent : null,
+    floatDate: (flt && flt.effective_date) || null,
+    raw: snap || null,
+    source: (snap && snap.source) || SOURCE.DEMO,
+  };
+}
+
+function num(v) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
 }
 
 class DemoMarketDataProvider {
@@ -54,186 +144,71 @@ class DemoMarketDataProvider {
       label: "DEMO DATA",
       delayLabel: "DEMO",
       live: false,
+      hasApiKey: false,
       credentialsConfigured: false,
       floatAvailable: false,
       warning:
-        "No Alpaca credentials configured. Every price, volume, and score on screen is simulated and must not be treated as market data.",
+        "No Alpaca credentials configured. Every price, volume, float, and score on screen is simulated and must not be treated as market data.",
       coverage: {
         ...coverageMeta(),
-        label: `Demo universe (${UNIVERSE.length} simulated symbols)`,
+        type: "demo_universe",
+        fullMarket: false,
+        size: DEMO_SYMBOLS.length,
+        label: `DEMO — simulated sample (${DEMO_SYMBOLS.length} symbols), not the market`,
       },
       probedAt: new Date().toISOString(),
     };
   }
 
-  async getQuote(symbol) {
-    return this.getSnapshot(symbol);
+  async getSnapshots(symbols) {
+    const tickers = (symbols || []).map((s) => String(s || "").toUpperCase()).filter(Boolean).map(demoSnapshot);
+    return { status: "OK", mode: "demo", tickers };
   }
 
-  async getSnapshot(symbol) {
-    const snap = this._snapshot(symbol);
-    return snap;
-  }
-
-  async getWatchlistSnapshots(symbols) {
-    return (symbols || []).map((s) => this._snapshot(s));
-  }
-
-  async getBars(symbol, timeframe) {
-    const tf = timeframe || "5Min";
-    const minutes = TIMEFRAME_MINUTES[tf] || 5;
-    const count = tf === "1Day" ? 120 : Math.min(240, Math.floor((6.5 * 60) / minutes) * (tf === "1Min" ? 1 : 3));
-    const bars = this._bars(symbol, minutes, count, tf === "1Day");
-    return {
-      symbol: String(symbol).toUpperCase(),
-      timeframe: tf,
-      source: SOURCE.DEMO,
-      bars,
-    };
-  }
-
-  async getMarketUniverse() {
-    return {
-      coverage: this.getStatus().coverage,
-      symbols: UNIVERSE.map((row) => ({
-        ...row,
-        source: SOURCE.DEMO,
-      })),
-    };
-  }
-
-  async getMovers() {
-    const snaps = UNIVERSE.map((row) => this._snapshot(row.symbol));
-    const gainers = [...snaps].sort((a, b) => (b.changePct.value || 0) - (a.changePct.value || 0));
-    const volume = [...snaps].sort((a, b) => (b.volume.value || 0) - (a.volume.value || 0));
-    const volatile = [...snaps].sort(
-      (a, b) => (b.volatilityScore.value || 0) - (a.volatilityScore.value || 0)
-    );
-    const coverage = {
-      ...coverageMeta(),
-      type: "demo_universe",
-      fullMarket: false,
-      label: `DEMO — limited simulated universe (${UNIVERSE.length} symbols)`,
-    };
-    return {
-      coverage,
-      source: SOURCE.DEMO,
-      gainers: gainers.slice(0, 25),
-      highVolume: volume.slice(0, 25),
-      volatile: volatile.slice(0, 25),
-    };
-  }
-
-  async getDetail(symbol, timeframe) {
-    const snap = this._snapshot(symbol);
-    const bars = await this.getBars(symbol, timeframe);
-    return { ...snap, bars: bars.bars, timeframe: bars.timeframe };
-  }
-
-  _snapshot(symbol) {
+  async getBars(symbol, interval) {
     const sym = String(symbol || "").toUpperCase();
-    const src = SOURCE.DEMO;
-    const { last, prevClose, open, high, low, close, volume, bars } = this._sessionStats(sym);
-    const changePct = pctChange(last, prevClose);
-    const rvol = dailyRelativeVolume(volume, this._priorVolumes(sym));
-    const shortTermPct = shortTermPctFromBars(bars, last, 30);
-    const score = volatilityScore({
-      last,
-      prevClose,
-      open,
-      high,
-      low,
-      shortTermPct,
-      rvol,
-    });
+    return { status: "OK", mode: "demo", symbol: sym, interval, bars: demoBars(sym, interval) };
+  }
+
+  async getTicker(symbol) {
+    const sym = String(symbol || "").toUpperCase();
     return {
-      symbol: sym,
-      name: lookupName(sym),
-      source: src,
-      last: field(last, src),
-      prevClose: field(prevClose, src),
-      changePct: field(changePct, src),
-      open: field(open, src),
-      high: field(high, src),
-      low: field(low, src),
-      close: field(close, src),
-      volume: field(volume, src),
-      rvol: field(rvol, src, {
-        method: "daily_vs_adv",
-        approximation:
-          "Demo RVOL is simulated daily volume versus a 10-session simulated average. Not real market RVOL.",
-      }),
-      volatilityScore: field(score, src, {
-        note: "Demo scanner metric (0–100). Not investment advice.",
-      }),
-      freeFloat: naField("Float data unavailable from current provider"),
-      floatPct: naField("Float data unavailable from current provider"),
-      sharesOutstanding: naField("Float data unavailable from current provider"),
-      asOf: new Date().toISOString(),
+      status: "OK",
+      mode: "demo",
+      ticker: demoSnapshot(sym),
+      details: demoRef(sym),
+      float: demoFloat(sym),
     };
   }
 
-  _sessionStats(symbol) {
-    const bars = this._bars(symbol, 1, 390, false);
-    const last = bars[bars.length - 1].c;
-    const open = bars[0].o;
-    let high = -Infinity;
-    let low = Infinity;
-    let volume = 0;
-    for (const b of bars) {
-      high = Math.max(high, b.h);
-      low = Math.min(low, b.l);
-      volume += b.v;
-    }
-    const prevClose = this._basePrice(symbol) * 0.99;
-    return { last, prevClose, open, high, low, close: last, volume, bars };
+  async getMarket() {
+    const rows = DEMO_SYMBOLS.map((s) => normalizeRow(demoRef(s), demoSnapshot(s), demoFloat(s)));
+    return {
+      rows,
+      snapshotError: null,
+      priceDataAvailable: true,
+      coverage: this.getStatus().coverage,
+    };
   }
 
-  _basePrice(symbol) {
-    const r = mulberry32(hashSymbol(symbol));
-    return 8 + r() * 420;
-  }
-
-  _priorVolumes(symbol) {
-    const r = mulberry32(hashSymbol(symbol) ^ 0x9e3779b9);
-    const vols = [];
-    for (let i = 0; i < 10; i++) vols.push(2e6 + r() * 4e7);
-    return vols;
-  }
-
-  _bars(symbol, minutes, count, daily) {
-    const r = mulberry32(hashSymbol(symbol) ^ (minutes * 997));
-    const base = this._basePrice(symbol);
-    const now = Date.now();
-    const step = daily ? 24 * 60 * 60 * 1000 : minutes * 60 * 1000;
-    const tick = Math.floor(now / (15 * 1000));
-    let price = base * (1 + ((tick % 50) - 25) / 2000);
-    const bars = [];
-    for (let i = count - 1; i >= 0; i--) {
-      const t = new Date(now - i * step).toISOString();
-      const drift = (r() - 0.48) * price * (daily ? 0.03 : 0.004);
-      const o = price;
-      const c = Math.max(0.5, o + drift);
-      const h = Math.max(o, c) * (1 + r() * 0.006);
-      const l = Math.min(o, c) * (1 - r() * 0.006);
-      const v = Math.round((5e4 + r() * 8e5) * Math.sqrt(minutes));
-      bars.push({
-        t,
-        o: round(o),
-        h: round(h),
-        l: round(l),
-        c: round(c),
-        v,
-        source: SOURCE.DEMO,
-      });
-      price = c;
-    }
-    return bars;
+  async getGainers() {
+    const rows = DEMO_SYMBOLS.map((s) => normalizeRow(demoRef(s), demoSnapshot(s), demoFloat(s)))
+      .sort((a, b) => (b.changePct || 0) - (a.changePct || 0));
+    return {
+      rows: rows.slice(0, 30),
+      tickers: rows.slice(0, 30).map((r) => r.raw),
+      priceDataAvailable: true,
+      coverage: this.getStatus().coverage,
+    };
   }
 }
 
-function round(n) {
-  return Math.round(n * 100) / 100;
-}
-
-module.exports = { DemoMarketDataProvider };
+module.exports = {
+  DemoMarketDataProvider,
+  demoSnapshot,
+  demoBars,
+  demoFloat,
+  demoRef,
+  DEMO_SYMBOLS,
+  normalizeRow,
+};
