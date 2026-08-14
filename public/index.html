@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#070b14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="VoltScan" />
+  <title>VoltScan</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/css/app.css?v=3" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button class="brand" id="brand-btn" type="button" aria-label="Home">
+        <span class="bolt" aria-hidden="true">⚡</span>
+        <span>VoltScan</span>
+      </button>
+      <div id="data-status" class="status-pill demo" role="status">DEMO DATA</div>
+    </header>
+    <div id="banner" class="banner hidden" role="status"></div>
+    <main id="view" class="view"></main>
+    <nav class="tabbar" aria-label="Main">
+      <button type="button" data-nav="home" class="tab active">
+        <span>⌂</span><span>Home</span>
+      </button>
+      <button type="button" data-nav="watchlist" class="tab">
+        <span>★</span><span>Watch</span>
+      </button>
+      <button type="button" data-nav="gainers" class="tab">
+        <span>▲</span><span>Gainers</span>
+      </button>
+      <button type="button" data-nav="market" class="tab">
+        <span>☰</span><span>Market</span>
+      </button>
+    </nav>
+  </div>
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true"></div>
+  <script src="/js/charts.js?v=3"></script>
+  <script src="/js/app.js?v=3"></script>
+</body>
+</html>
