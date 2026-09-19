@@ -9,6 +9,7 @@ const { URL } = require("url");
 const { getProvider, getStatus, credentialsFromEnv } = require("./data-provider");
 const { optionalNumber } = require("./data-provider/sources");
 const tournament = require("./data-provider/tournament");
+const cornhole = require("./data-provider/cornhole");
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -87,7 +88,40 @@ function filterAndSort(rows, url) {
   return out.sort(cmp);
 }
 
+async function handleCornholeApi(req, res, url) {
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (req.method === "GET" && parts.length === 2) {
+    return sendJson(res, 200, cornhole.getState());
+  }
+  if (req.method === "POST" && parts.length === 3 && parts[2] === "games") {
+    const body = await readJson(req);
+    const result = cornhole.startGame(body);
+    if (result.error) return sendJson(res, result.status, { error: result.error });
+    return sendJson(res, 201, result);
+  }
+  if (parts.length === 5 && parts[2] === "games" && parts[4] === "bag" && req.method === "POST") {
+    const body = await readJson(req);
+    const result = cornhole.recordBag(parts[3], body.kind);
+    if (result.error) return sendJson(res, result.status, { error: result.error });
+    return sendJson(res, 200, result);
+  }
+  if (parts.length === 5 && parts[2] === "games" && parts[4] === "undo" && req.method === "POST") {
+    const result = cornhole.undoBag(parts[3]);
+    if (result.error) return sendJson(res, result.status, { error: result.error });
+    return sendJson(res, 200, result);
+  }
+  return sendJson(res, 404, { error: "Unknown cornhole route." });
+}
+
 async function handleApi(req, res, url) {
+  if (url.pathname === "/api/cornhole" || url.pathname.startsWith("/api/cornhole/")) {
+    try {
+      return await handleCornholeApi(req, res, url);
+    } catch (e) {
+      return sendJson(res, e.message === "Invalid JSON" ? 400 : 500, { error: e.message });
+    }
+  }
+
   if (url.pathname === "/api/status") {
     const creds = credentialsFromEnv();
     const status = await getStatus();
@@ -250,7 +284,8 @@ async function handleTournamentApi(req, res, url, provider) {
 
 function serveStatic(req, res, url) {
   let rel = decodeURIComponent(url.pathname);
-  if (rel === "/") rel = "/index.html";
+  if (rel === "/" || rel === "/cornhole") rel = "/cornhole.html";
+  if (rel === "/scan") rel = "/index.html";
   const normalized = path.normalize(rel).replace(/^(\.\.[/\\])+/, "");
   const filePath = path.join(PUBLIC_DIR, normalized);
   if (!filePath.startsWith(PUBLIC_DIR)) {
@@ -275,7 +310,7 @@ function serveStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "voltscan" });
+    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "cornhole" });
     if (url.pathname.startsWith("/api/")) return handleApi(req, res, url);
     return serveStatic(req, res, url);
   } catch (err) {
@@ -294,18 +329,16 @@ server.on("error", (err) => {
 });
 
 if (require.main === module) {
-  getStatus()
-    .then((status) => {
-      server.listen(PORT, "0.0.0.0", () => {
-        console.log(`VoltScan Final running at http://localhost:${PORT}`);
-        console.log(`Data: ${status.label}`);
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Backyard Cornhole at http://localhost:${PORT}`);
+    console.log(`VoltScan scanner still at http://localhost:${PORT}/scan`);
+    getStatus()
+      .then((status) => {
+        console.log(`Scanner data: ${status.label}`);
         if (status.warning) console.warn(`Warning: ${status.warning}`);
-      });
-    })
-    .catch((err) => {
-      console.error(err);
-      process.exit(1);
-    });
+      })
+      .catch((err) => console.warn(err.message || err));
+  });
 }
 
 module.exports = { server, handleApi };
