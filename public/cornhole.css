@@ -19,7 +19,7 @@ html, body {
 }
 button { font: inherit; color: inherit; }
 .wrap {
-  width: min(560px, 100%);
+  width: min(760px, 100%);
   margin: 0 auto;
   padding: calc(10px + env(safe-area-inset-top)) 12px calc(24px + env(safe-area-inset-bottom));
 }
@@ -51,6 +51,10 @@ h1 { margin: 2px 0 4px; font-size: clamp(1.45rem, 6vw, 2rem); letter-spacing: -.
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
 }
 .side { text-align: center; }
 .side.up { outline: 2px solid var(--now); border-radius: 14px; padding: 4px; }
@@ -68,7 +72,7 @@ h1 { margin: 2px 0 4px; font-size: clamp(1.45rem, 6vw, 2rem); letter-spacing: -.
 #court {
   display: block;
   width: 100%;
-  height: min(68vh, 720px);
+  height: min(74vh, 880px);
   border-radius: 22px;
   touch-action: none;
   background: #24501f;

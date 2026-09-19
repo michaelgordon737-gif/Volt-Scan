@@ -272,6 +272,12 @@ function draw() {
     ctx.stroke();
     ctx.setLineDash([]);
     drawBag(aim.x1, aim.y1, side, 1.1, 0);
+    const ghost = aimPower({ x: aim.x0, y: aim.y0 }, { x: aim.x1, y: aim.y1 });
+    if (ghost) {
+      ctx.globalAlpha = 0.4;
+      drawBag(ghost.x, ghost.y, side, 0.9, 0);
+      ctx.globalAlpha = 1;
+    }
   } else if (flying) {
     drawBag(flying.x, flying.y, side, 1.15, flying.lift);
   } else if (game && !game.winner) {
@@ -310,7 +316,7 @@ function aimPower(start, end) {
   const dy = pulledBack ? start.y - end.y : end.y - start.y;
   const dist = Math.hypot(dx, dy);
   if (dist < 0.035) return null;
-  const power = Math.min(0.95, dist * (pulledBack ? 6.1 : 1.28));
+  const power = Math.min(0.92, dist * (pulledBack ? 3.4 : 1.12));
   return {
     x: Math.min(0.96, Math.max(0.04, start.x + (dx / dist) * power)),
     y: Math.min(0.96, Math.max(0.04, start.y + (dy / dist) * power)),

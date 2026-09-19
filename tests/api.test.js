@@ -93,5 +93,5 @@ test("frontend still contains info buttons, charts, and ruleSummary", () => {
   assert.match(js, /function joinCup/);
   assert.match(js, /function claimCupName/);
   const sw = fs.readFileSync(path.join(__dirname, "../public/sw.js"), "utf8");
-  assert.match(sw, /backyard-cornhole-v2/);
+  assert.match(sw, /backyard-cornhole-v3/);
 });
