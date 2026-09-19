@@ -9,7 +9,7 @@
   <title>Backyard Cornhole</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/cornhole.css?v=1">
+  <link rel="stylesheet" href="/cornhole.css?v=2">
 </head>
 <body>
   <div class="wrap">
@@ -17,14 +17,20 @@
       <div>
         <p class="eyebrow">Tonight</p>
         <h1>Backyard Cornhole</h1>
-        <p class="rules">4 bags · hole 3 · board 1 · cancel · first to 21</p>
+        <p class="rules">Pull the bag back and throw · hole 3 · board 1 · first to 21</p>
       </div>
       <button id="meBtn" class="me-btn" type="button">Who am I?</button>
     </header>
-    <div id="now" class="now" hidden></div>
+    <div id="now" class="now">Grab a bag</div>
+    <div id="hud" class="hud"></div>
+    <canvas id="court" width="390" height="640" aria-label="Cornhole court"></canvas>
+    <p id="hint" class="play-hint">Pull the bag back · let go to throw</p>
+    <div class="row">
+      <button id="undoBtn" class="undo" type="button">Undo last bag</button>
+    </div>
     <main id="app"></main>
   </div>
   <p id="toast" class="toast" role="status"></p>
-  <script src="/cornhole.js?v=1" defer></script>
+  <script src="/cornhole.js?v=2" defer></script>
 </body>
 </html>

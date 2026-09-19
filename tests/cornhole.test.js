@@ -8,7 +8,9 @@ const path = require("path");
 const http = require("http");
 const {
   PLAYERS,
+  COURT,
   inningNet,
+  scoreLanding,
   getState,
   startGame,
   recordBag,
@@ -49,6 +51,12 @@ function get(port, urlPath) {
     }).on("error", reject);
   });
 }
+
+test("landing on the hole, board, or grass is scored by the court", () => {
+  assert.equal(scoreLanding(COURT.hole.x, COURT.hole.y), "hole");
+  assert.equal(scoreLanding(COURT.board.x + 0.04, COURT.board.y + COURT.board.h - 0.04), "board");
+  assert.equal(scoreLanding(0.08, 0.80), "miss");
+});
 
 test("cancellation scoring keeps the net only", () => {
   assert.deepEqual(inningNet(["hole", "hole", "miss", "miss"], ["board", "board", "miss", "miss"]), {
@@ -130,7 +138,14 @@ test("cornhole HTTP routes score a bag and serve the board at /", async (t) => {
   const bag = await post(port, `/api/cornhole/games/${live.id}/bag`, { kind: "hole" });
   assert.equal(bag.status, 200);
   const scored = JSON.parse(bag.body).game;
-  assert.equal(scored.current.aBags[0], "hole");
+  assert.equal(scored.current.aBags[0].kind, "hole");
   assert.equal(scored.current.throwing, "a");
   assert.equal(scored.current.bag, 2);
+
+  const tossed = JSON.parse((await post(port, `/api/cornhole/games/${live.id}/bag`, {
+    x: listed.court.hole.x,
+    y: listed.court.hole.y,
+  })).body);
+  assert.equal(tossed.bag.kind, "hole");
+  assert.equal(tossed.game.current.aBags[1].kind, "hole");
 });

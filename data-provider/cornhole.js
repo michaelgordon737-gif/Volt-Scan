@@ -10,6 +10,15 @@ const PLAYERS = [
 ];
 const BAGS_PER_INNING = 4;
 const WIN_SCORE = 21;
+const COURT = {
+  board: { x: 0.29, y: 0.08, w: 0.42, h: 0.30 },
+  hole: { x: 0.50, y: 0.155, r: 0.052 },
+  throwLine: { x: 0.50, y: 0.84 },
+};
+
+function bagKind(bag) {
+  return typeof bag === "string" ? bag : (bag && bag.kind) || "miss";
+}
 
 function storePath(env = process.env) {
   return env.VOLTSCAN_CORNHOLE_FILE
@@ -24,10 +33,35 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function bagPoints(kind) {
+function bagPoints(bag) {
+  const kind = bagKind(bag);
   if (kind === "hole") return 3;
   if (kind === "board") return 1;
   return 0;
+}
+
+function scoreLanding(x, y) {
+  const dx = x - COURT.hole.x;
+  const dy = y - COURT.hole.y;
+  if ((dx * dx) + (dy * dy) <= COURT.hole.r * COURT.hole.r) return "hole";
+  const b = COURT.board;
+  if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return "board";
+  return "miss";
+}
+
+function normalizeBag(input) {
+  if (typeof input === "string") {
+    if (!["hole", "board", "miss"].includes(input)) return { error: "Bag must be hole, board, or miss.", status: 400 };
+    return { kind: input };
+  }
+  const x = Number(input && input.x);
+  const y = Number(input && input.y);
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    return { kind: scoreLanding(x, y), x, y };
+  }
+  const kind = input && input.kind;
+  if (!["hole", "board", "miss"].includes(kind)) return { error: "Bag must be hole, board, or miss.", status: 400 };
+  return { kind };
 }
 
 function inningNet(aBags, bBags) {
@@ -110,6 +144,7 @@ function getState(env = process.env) {
     players: store.players,
     winScore: WIN_SCORE,
     bagsPerInning: BAGS_PER_INNING,
+    court: COURT,
     standings: standings(store),
     games: store.games.map(publicGame),
   };
@@ -136,15 +171,16 @@ function startGame({ sideA, sideB }, env = process.env) {
   return { game: publicGame(game) };
 }
 
-function recordBag(id, kind, env = process.env) {
-  if (!["hole", "board", "miss"].includes(kind)) return { error: "Bag must be hole, board, or miss.", status: 400 };
+function recordBag(id, input, env = process.env) {
+  const bag = normalizeBag(input);
+  if (bag.error) return bag;
   const { file, store } = load(env);
   const g = store.games.find((x) => x.id === id);
   if (!g) return { error: "Game not found.", status: 404 };
   if (g.winner) return { error: "This game is already over.", status: 409 };
   let inn = g.innings[g.innings.length - 1];
-  if (inn.aBags.length < BAGS_PER_INNING) inn.aBags.push(kind);
-  else if (inn.bBags.length < BAGS_PER_INNING) inn.bBags.push(kind);
+  if (inn.aBags.length < BAGS_PER_INNING) inn.aBags.push(bag);
+  else if (inn.bBags.length < BAGS_PER_INNING) inn.bBags.push(bag);
   else return { error: "Inning is full.", status: 409 };
 
   if (inn.aBags.length === BAGS_PER_INNING && inn.bBags.length === BAGS_PER_INNING) {
@@ -159,7 +195,7 @@ function recordBag(id, kind, env = process.env) {
     if (!g.winner) g.innings.push({ aBags: [], bBags: [] });
   }
   writeStore(file, store);
-  return { game: publicGame(g) };
+  return { game: publicGame(g), bag };
 }
 
 function rewindCompletedInning(g, inn) {
@@ -223,7 +259,10 @@ module.exports = {
   PLAYERS,
   BAGS_PER_INNING,
   WIN_SCORE,
+  COURT,
+  bagKind,
   bagPoints,
+  scoreLanding,
   inningNet,
   getState,
   startGame,

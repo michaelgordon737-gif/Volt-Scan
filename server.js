@@ -101,7 +101,7 @@ async function handleCornholeApi(req, res, url) {
   }
   if (parts.length === 5 && parts[2] === "games" && parts[4] === "bag" && req.method === "POST") {
     const body = await readJson(req);
-    const result = cornhole.recordBag(parts[3], body.kind);
+    const result = cornhole.recordBag(parts[3], body);
     if (result.error) return sendJson(res, result.status, { error: result.error });
     return sendJson(res, 200, result);
   }
