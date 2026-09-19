@@ -57,7 +57,7 @@ test("Friends Cup is seeded and a player can join and trade", () => {
   const listed = require("../data-provider/tournament").listTournaments(env);
   assert.equal(listed[0].id, DEFAULT_CODE);
   assert.equal(listed[0].startingCash, DEFAULT_STARTING_CASH);
-  assert.deepEqual(listed[0].players.map((p) => p.name), ["Shane", "Braden", "Noah", "Jessie", "Blake", "Andrew", "Geo Pock"]);
+  assert.deepEqual(listed[0].players.map((p) => p.name), ["Shane", "Braden", "Noah", "Jessie", "Blake", "Andrew", "Geo Pock", "Dillon", "Elisha"]);
 
   const joined = joinTournament(DEFAULT_CODE, "Sam", env);
   assert.equal(joined.player.name, "Sam");

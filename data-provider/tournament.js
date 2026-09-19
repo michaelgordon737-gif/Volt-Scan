@@ -18,6 +18,8 @@ const FRIENDS_ROSTER = [
   { id: "player-blake", name: "Blake" },
   { id: "player-andrew", name: "Andrew" },
   { id: "player-geo-pock", name: "Geo Pock" },
+  { id: "player-dillon", name: "Dillon" },
+  { id: "player-elisha", name: "Elisha" },
 ];
 
 function storePath(env = process.env) {
