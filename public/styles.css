@@ -70,7 +70,7 @@ h3{font-size:1rem;margin-bottom:4px}
 .alert-icon{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:22px;background:#2f2414;border:1px solid #5b431a}
 .alert-card.red .alert-icon{background:#421c26;border-color:#773043}
 .alert-time{color:var(--muted);font-size:12px}
-.bottom-nav{position:fixed;bottom:0;left:0;right:0;transform:none;width:100%;min-height:var(--nav-h);display:grid;grid-template-columns:repeat(6,1fr);z-index:20;background:rgba(9,14,25,.94);backdrop-filter:blur(18px);border-top:1px solid var(--line);padding:10px clamp(8px,1.5vw,24px) max(10px,env(safe-area-inset-bottom))}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;transform:none;width:100%;min-height:var(--nav-h);display:grid;grid-template-columns:repeat(7,1fr);z-index:20;background:rgba(9,14,25,.94);backdrop-filter:blur(18px);border-top:1px solid var(--line);padding:10px clamp(8px,1.5vw,24px) max(10px,env(safe-area-inset-bottom))}
 .nav-btn{border:0;background:transparent;color:#7786a2;border-radius:12px;padding:clamp(7px,.8vh,12px) 4px;display:flex;flex-direction:column;align-items:center;gap:2px}
 .nav-btn span{font-size:clamp(19px,1.5vw,26px)}.nav-btn small{font-size:clamp(10px,.7vw,13px);font-weight:800}.nav-btn.active{color:#c9bdff;background:#171d31}
 .empty{padding:28px;text-align:center;border:1px dashed #34415d;border-radius:16px;color:var(--muted)}
@@ -126,7 +126,7 @@ h3{font-size:1rem;margin-bottom:4px}
 .float-highlight{border-color:#4b3b8a;background:linear-gradient(180deg,#1d1940,#13172a)}
 @media(max-width:980px){.scanner-controls{grid-template-columns:repeat(3,1fr)}.scanner-controls #marketSearch{grid-column:span 2}}
 @media(max-width:760px){
- .bottom-nav{grid-template-columns:repeat(6,1fr)}.nav-btn{padding:6px 1px}.nav-btn span{font-size:17px}.nav-btn small{font-size:8px}
+ .bottom-nav{grid-template-columns:repeat(7,1fr)}.nav-btn{padding:6px 1px}.nav-btn span{font-size:17px}.nav-btn small{font-size:8px}
  .scanner-controls{grid-template-columns:1fr 1fr}.scanner-controls #marketSearch{grid-column:1/-1}.check-control{padding:8px 2px}
  .market-table-wrap{overflow-x:auto}.market-table-head,.market-table-row{min-width:720px}
 }
@@ -156,3 +156,13 @@ h3{font-size:1rem;margin-bottom:4px}
   .bottom-nav{min-height:72px}
   .price-chart,.chart-empty{height:285px}.chart-toolbar{align-items:flex-start}.chart-intervals{width:100%}.chart-info{gap:8px;font-size:11px}.chart-card{padding:10px 8px 7px}
 }
+
+.cup-join{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+.cup-board{display:flex;flex-direction:column;gap:8px}
+.cup-row{display:grid;grid-template-columns:42px 1fr auto auto;gap:10px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.018)}
+.cup-row.me{border-color:#5d4bb0;background:#17142c}
+.cup-rank{font-weight:900;color:#b9a9ff}
+.trade-box{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.trade-box .text-input{width:88px}
+.code-pill{font-variant-numeric:tabular-nums;letter-spacing:.06em}
+@media(max-width:760px){.cup-join{grid-template-columns:1fr}.cup-row{grid-template-columns:32px 1fr auto}}

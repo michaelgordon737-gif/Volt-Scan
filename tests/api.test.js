@@ -45,6 +45,7 @@ test("API and original VoltScan UI work in demo mode without Alpaca keys", async
   assert.equal(home.status, 200);
   assert.match(home.body, /VoltScan/);
   assert.match(home.body, /data-route="watchlist"/);
+  assert.match(home.body, /data-route="tournament"/);
 
   const appJs = await get(port, "/app.js?v=alpaca2");
   assert.equal(appJs.status, 200);
@@ -84,6 +85,8 @@ test("frontend still contains info buttons, charts, and ruleSummary", () => {
   assert.match(js, /data-chartinterval/);
   assert.match(js, /openStockDetail/);
   assert.match(js, /function fitUiToMonitor/);
+  assert.match(js, /function renderTournament/);
+  assert.match(js, /function joinCup/);
   const sw = fs.readFileSync(path.join(__dirname, "../public/sw.js"), "utf8");
-  assert.match(sw, /voltscan-final-monitor-v1/);
+  assert.match(sw, /voltscan-final-cup-v1/);
 });
