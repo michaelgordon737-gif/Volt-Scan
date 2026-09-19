@@ -87,6 +87,7 @@ test("frontend still contains info buttons, charts, and ruleSummary", () => {
   assert.match(js, /function fitUiToMonitor/);
   assert.match(js, /function renderTournament/);
   assert.match(js, /function joinCup/);
+  assert.match(js, /function claimCupName/);
   const sw = fs.readFileSync(path.join(__dirname, "../public/sw.js"), "utf8");
-  assert.match(sw, /voltscan-final-cup-v1/);
+  assert.match(sw, /voltscan-final-cup-v2/);
 });

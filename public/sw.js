@@ -1,5 +1,5 @@
-const CACHE = "voltscan-final-cup-v1";
-const ASSETS = ["/","/index.html","/styles.css?v=cup1","/app.js?v=cup1","/manifest.json","/icon.svg"];
+const CACHE = "voltscan-final-cup-v2";
+const ASSETS = ["/","/index.html","/styles.css?v=cup2","/app.js?v=cup2","/manifest.json","/icon.svg"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));

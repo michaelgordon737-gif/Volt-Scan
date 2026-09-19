@@ -57,9 +57,10 @@ test("Friends Cup is seeded and a player can join and trade", () => {
   const listed = require("../data-provider/tournament").listTournaments(env);
   assert.equal(listed[0].id, DEFAULT_CODE);
   assert.equal(listed[0].startingCash, DEFAULT_STARTING_CASH);
+  assert.equal(listed[0].players[0].name, "Shane");
 
-  const joined = joinTournament(DEFAULT_CODE, "Shane", env);
-  assert.equal(joined.player.name, "Shane");
+  const joined = joinTournament(DEFAULT_CODE, "Sam", env);
+  assert.equal(joined.player.name, "Sam");
   assert.equal(joined.player.cash, DEFAULT_STARTING_CASH);
 
   const buy = tradeTournament(DEFAULT_CODE, {
@@ -141,6 +142,7 @@ test("tournament HTTP routes join and mark a demo trade", async (t) => {
   assert.ok(body.player.holdings.some((h) => h.symbol === "AAPL"));
 
   const detail = JSON.parse((await get(port, `/api/tournaments/${DEFAULT_CODE}`)).body);
-  assert.equal(detail.players[0].name, "Sam");
+  assert.ok(detail.players.some((p) => p.name === "Shane"));
+  assert.ok(detail.players.some((p) => p.name === "Sam"));
   assert.ok(getTournament(DEFAULT_CODE, env));
 });

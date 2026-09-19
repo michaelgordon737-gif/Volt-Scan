@@ -8,6 +8,8 @@ const DEFAULT_STARTING_CASH = 100000;
 const DEFAULT_DAYS = 7;
 const DEFAULT_CODE = "VS-FRIENDS";
 const DEFAULT_NAME = "Friends Cup";
+const HOST_PLAYER_ID = "host-shane";
+const HOST_PLAYER_NAME = "Shane";
 
 function storePath(env = process.env) {
   return env.VOLTSCAN_TOURNAMENT_FILE
@@ -68,13 +70,27 @@ function defaultTournament(at = new Date()) {
     createdAt: nowIso(at),
     startsAt: nowIso(at),
     endsAt: nowIso(addDays(at, DEFAULT_DAYS)),
-    players: [],
+    players: [hostPlayer(at)],
     trades: [],
+  };
+}
+
+function hostPlayer(at = new Date()) {
+  return {
+    id: HOST_PLAYER_ID,
+    name: HOST_PLAYER_NAME,
+    cash: DEFAULT_STARTING_CASH,
+    positions: {},
+    joinedAt: nowIso(at),
   };
 }
 
 function ensureDefault(store, at = new Date()) {
   if (!store.tournaments.length) store.tournaments.push(defaultTournament(at));
+  const cup = store.tournaments.find((t) => t.id === DEFAULT_CODE);
+  if (cup && !cup.players.some((p) => p.name.toLowerCase() === HOST_PLAYER_NAME.toLowerCase())) {
+    cup.players.unshift(hostPlayer(at));
+  }
   return store;
 }
 
@@ -232,4 +248,6 @@ module.exports = {
   publicTournament,
   applyTrade,
   defaultTournament,
+  HOST_PLAYER_ID,
+  HOST_PLAYER_NAME,
 };
