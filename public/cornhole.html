@@ -4,33 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#1a1208">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Backyard Cornhole</title>
+  <title>Tonight's Cornhole</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/cornhole.css?v=3">
+  <link rel="stylesheet" href="/cornhole.css?v=4">
 </head>
 <body>
-  <div class="wrap">
+  <div class="shell">
     <header class="top">
       <div>
-        <p class="eyebrow">Tonight</p>
-        <h1>Backyard Cornhole</h1>
-        <p class="rules">Pull the bag back and throw · hole 3 · board 1 · first to 21</p>
+        <p class="eyebrow">Backyard · first to 21</p>
+        <h1>Tonight's Cornhole</h1>
       </div>
-      <button id="meBtn" class="me-btn" type="button">Who am I?</button>
+      <div id="nowbox" class="nowbox">Loading schedule…</div>
     </header>
-    <div id="now" class="now">Grab a bag</div>
-    <div id="hud" class="hud"></div>
-    <canvas id="court" width="390" height="640" aria-label="Cornhole court"></canvas>
-    <p id="hint" class="play-hint">Pull the bag back · let go to throw</p>
-    <div class="row">
-      <button id="undoBtn" class="undo" type="button">Undo last bag</button>
-    </div>
-    <main id="app"></main>
+    <main id="bracket" class="bracket"></main>
   </div>
   <p id="toast" class="toast" role="status"></p>
-  <script src="/cornhole.js?v=3" defer></script>
+  <script src="/cornhole.js?v=4" defer></script>
 </body>
 </html>

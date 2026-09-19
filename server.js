@@ -110,6 +110,12 @@ async function handleCornholeApi(req, res, url) {
     if (result.error) return sendJson(res, result.status, { error: result.error });
     return sendJson(res, 200, result);
   }
+  if (parts.length === 5 && parts[2] === "matches" && parts[4] === "winner" && req.method === "POST") {
+    const body = await readJson(req);
+    const result = cornhole.setWinner(parts[3], body.side);
+    if (result.error) return sendJson(res, result.status, { error: result.error });
+    return sendJson(res, 200, result);
+  }
   return sendJson(res, 404, { error: "Unknown cornhole route." });
 }
 

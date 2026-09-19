@@ -43,7 +43,7 @@ test("API and original VoltScan UI work in demo mode without Alpaca keys", async
 
   const home = await get(port, "/");
   assert.equal(home.status, 200);
-  assert.match(home.body, /Backyard Cornhole/);
+  assert.match(home.body, /Tonight's Cornhole/);
 
   const scan = await get(port, "/index.html");
   assert.equal(scan.status, 200);
@@ -93,5 +93,5 @@ test("frontend still contains info buttons, charts, and ruleSummary", () => {
   assert.match(js, /function joinCup/);
   assert.match(js, /function claimCupName/);
   const sw = fs.readFileSync(path.join(__dirname, "../public/sw.js"), "utf8");
-  assert.match(sw, /backyard-cornhole-v3/);
+  assert.match(sw, /backyard-cornhole-v4/);
 });

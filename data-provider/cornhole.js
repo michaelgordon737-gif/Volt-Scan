@@ -72,11 +72,25 @@ function inningNet(aBags, bBags) {
   return { a: 0, b: 0, rawA: a, rawB: b };
 }
 
+function buildSchedule() {
+  return [
+    { id: "p1", order: 1, round: "Play-in", a: ["Dillon"], b: ["Elisha"], winner: null, next: "q4", nextSide: "b" },
+    { id: "q1", order: 2, round: "Quarterfinals", a: ["Shane"], b: ["Braden"], winner: null, next: "s1", nextSide: "a" },
+    { id: "q2", order: 3, round: "Quarterfinals", a: ["Noah"], b: ["Jessie"], winner: null, next: "s1", nextSide: "b" },
+    { id: "q3", order: 4, round: "Quarterfinals", a: ["Blake"], b: ["Andrew"], winner: null, next: "s2", nextSide: "a" },
+    { id: "q4", order: 5, round: "Quarterfinals", a: ["Geo Pock"], b: [], winner: null, next: "s2", nextSide: "b" },
+    { id: "s1", order: 6, round: "Semifinals", a: [], b: [], winner: null, next: "f1", nextSide: "a" },
+    { id: "s2", order: 7, round: "Semifinals", a: [], b: [], winner: null, next: "f1", nextSide: "b" },
+    { id: "f1", order: 8, round: "Final", a: [], b: [], winner: null },
+  ];
+}
+
 function emptyStore() {
   return {
     name: "Backyard Cornhole",
     players: PLAYERS.slice(),
     games: [],
+    schedule: buildSchedule(),
   };
 }
 
@@ -87,6 +101,7 @@ function readStore(file) {
     for (const name of PLAYERS) {
       if (!data.players.includes(name)) data.players.push(name);
     }
+    if (!Array.isArray(data.schedule) || data.schedule.length < 8) data.schedule = buildSchedule();
     return data;
   } catch {
     return emptyStore();
@@ -136,9 +151,72 @@ function publicGame(g) {
   };
 }
 
+function publicMatch(m, nowId) {
+  return {
+    ...m,
+    labelA: m.a && m.a.length ? labelSide(m.a) : "TBD",
+    labelB: m.b && m.b.length ? labelSide(m.b) : "TBD",
+    ready: !!(m.a && m.a.length && m.b && m.b.length),
+    open: !m.winner && !!(m.a && m.a.length && m.b && m.b.length),
+    now: m.id === nowId,
+  };
+}
+
+function nowMatch(schedule) {
+  return (schedule || []).find((m) => !m.winner && m.a && m.a.length && m.b && m.b.length) || null;
+}
+
+function onDeck(schedule, now) {
+  if (!now) return null;
+  return (schedule || []).find((m) => !m.winner && m.id !== now.id && m.a && m.a.length && m.b && m.b.length) || null;
+}
+
+function publicSchedule(store) {
+  const now = nowMatch(store.schedule);
+  const deck = onDeck(store.schedule, now);
+  return {
+    matches: store.schedule.map((m) => publicMatch(m, now && now.id)),
+    now: now ? publicMatch(now, now.id) : null,
+    onDeck: deck ? publicMatch(deck, now && now.id) : null,
+    champion: (store.schedule.find((m) => m.id === "f1" && m.winner) || {}).winner
+      ? labelSide((store.schedule.find((m) => m.id === "f1") || {})[ (store.schedule.find((m) => m.id === "f1") || {}).winner ])
+      : null,
+  };
+}
+
+function setWinner(id, side, env = process.env) {
+  if (side !== "a" && side !== "b") return { error: "Pick side a or b.", status: 400 };
+  const { file, store } = load(env);
+  if (!Array.isArray(store.schedule)) store.schedule = buildSchedule();
+  const match = store.schedule.find((m) => m.id === id);
+  if (!match) return { error: "Match not found.", status: 404 };
+  if (!match.a.length || !match.b.length) return { error: "That match is not filled yet.", status: 409 };
+  match.winner = side;
+  if (match.next) {
+    const next = store.schedule.find((m) => m.id === match.next);
+    if (next) {
+      const names = (side === "a" ? match.a : match.b).slice();
+      if (match.nextSide === "b") next.b = names;
+      else next.a = names;
+    }
+  }
+  writeStore(file, store);
+  return { schedule: publicSchedule(store) };
+}
+
 function getState(env = process.env) {
   const { file, store } = load(env);
   seedOpener(store, file);
+  if (!Array.isArray(store.schedule) || store.schedule.length < 8) {
+    store.schedule = buildSchedule();
+    writeStore(file, store);
+  }
+  const champMatch = store.schedule.find((m) => m.id === "f1");
+  const champion = champMatch && champMatch.winner
+    ? labelSide(champMatch[champMatch.winner])
+    : null;
+  const now = nowMatch(store.schedule);
+  const deck = onDeck(store.schedule, now);
   return {
     name: store.name,
     players: store.players,
@@ -147,6 +225,12 @@ function getState(env = process.env) {
     court: COURT,
     standings: standings(store),
     games: store.games.map(publicGame),
+    schedule: {
+      matches: store.schedule.map((m) => publicMatch(m, now && now.id)),
+      now: now ? publicMatch(now, now.id) : null,
+      onDeck: deck ? publicMatch(deck, now && now.id) : null,
+      champion,
+    },
   };
 }
 
@@ -270,4 +354,6 @@ module.exports = {
   undoBag,
   publicGame,
   standings,
+  buildSchedule,
+  setWinner,
 };

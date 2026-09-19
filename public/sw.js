@@ -1,5 +1,5 @@
-const CACHE = "backyard-cornhole-v3";
-const ASSETS = ["/cornhole.css?v=3","/cornhole.js?v=3","/manifest.json","/icon.svg"];
+const CACHE = "backyard-cornhole-v4";
+const ASSETS = ["/cornhole.css?v=4","/cornhole.js?v=4","/manifest.json","/icon.svg"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));

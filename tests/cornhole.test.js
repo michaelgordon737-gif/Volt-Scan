@@ -15,6 +15,7 @@ const {
   startGame,
   recordBag,
   undoBag,
+  setWinner,
 } = require("../data-provider/cornhole");
 
 function tmpEnv() {
@@ -65,6 +66,18 @@ test("cancellation scoring keeps the net only", () => {
   assert.deepEqual(inningNet(["board", "board", "board", "board"], ["board", "board", "board", "board"]), {
     a: 0, b: 0, rawA: 4, rawB: 4,
   });
+});
+
+test("tonight's schedule seats the nine and advances a winner", () => {
+  const env = tmpEnv();
+  const state = getState(env);
+  assert.equal(state.schedule.now.labelA, "Dillon");
+  assert.equal(state.schedule.now.labelB, "Elisha");
+  assert.equal(state.schedule.onDeck.labelA, "Shane");
+  const played = setWinner("p1", "a", env);
+  assert.equal(played.schedule.matches.find((m) => m.id === "q4").labelB, "Dillon");
+  assert.equal(played.schedule.now.labelA, "Shane");
+  fs.unlinkSync(env.VOLTSCAN_CORNHOLE_FILE);
 });
 
 test("roster is the backyard crew and Shane vs Braden opens first", () => {
@@ -127,10 +140,12 @@ test("cornhole HTTP routes score a bag and serve the board at /", async (t) => {
 
   const home = await get(port, "/");
   assert.equal(home.status, 200);
-  assert.match(home.body, /Backyard Cornhole/);
+  assert.match(home.body, /Tonight's Cornhole/);
   assert.match(home.body, /cornhole\.js/);
 
   const listed = JSON.parse((await get(port, "/api/cornhole")).body);
+  assert.ok(listed.schedule.now);
+  assert.equal(listed.schedule.now.labelA, "Dillon");
   assert.ok(listed.players.includes("Geo Pock"));
   const live = listed.games.find((g) => g.open);
   assert.ok(live);
