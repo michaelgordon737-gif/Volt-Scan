@@ -9,7 +9,7 @@
   <title>VoltScan</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=alpaca2">
+  <link rel="stylesheet" href="/styles.css?v=cup2">
 </head>
 <body>
   <div class="app-shell">
@@ -24,6 +24,7 @@
         </div>
       </div>
       <div class="top-actions">
+        <span id="nowChip" class="mode-badge delayed" hidden></span>
         <span id="modeBadge" class="mode-badge">DEMO</span>
         <button id="notifyBtn" class="icon-btn" aria-label="Enable notifications" title="Enable notifications">🔔</button>
       </div>
@@ -36,6 +37,7 @@
       <button data-route="market" class="nav-btn"><span>▦</span><small>Market</small></button>
       <button data-route="gainers" class="nav-btn"><span>🔥</span><small>Gainers</small></button>
       <button data-route="watchlist" class="nav-btn"><span>★</span><small>Watchlist</small></button>
+      <button data-route="tournament" class="nav-btn"><span>🏆</span><small>Cup</small></button>
       <button data-route="alerts" class="nav-btn"><span>🚨</span><small>Alerts</small></button>
       <button data-route="settings" class="nav-btn"><span>⚙</span><small>Settings</small></button>
     </nav>
@@ -83,6 +85,6 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=alpaca2" defer></script>
+  <script src="/app.js?v=cup2" defer></script>
 </body>
 </html>

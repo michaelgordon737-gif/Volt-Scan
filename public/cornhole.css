@@ -1,0 +1,72 @@
+:root {
+  --bg: #120c07;
+  --panel: #23180d;
+  --line: #4a331c;
+  --text: #f6ead6;
+  --muted: #c4a57a;
+  --wood: #e09a45;
+  --now: #f2c14e;
+  --win: #8ee0a4;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: radial-gradient(circle at 18% 0, rgba(224,154,69,.16), transparent 40%), var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.shell {
+  min-height: 100dvh;
+  height: 100dvh;
+  padding: clamp(18px, 2.4vh, 36px) clamp(22px, 3.2vw, 56px) 20px;
+  display: flex;
+  flex-direction: column;
+}
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  margin-bottom: clamp(12px, 2vh, 24px);
+}
+.eyebrow { margin: 0; letter-spacing: .18em; text-transform: uppercase; font-weight: 800; color: var(--wood); font-size: clamp(13px, 1.2vw, 18px); }
+h1 { margin: 4px 0 0; font-size: clamp(2.4rem, 5.4vw, 4.6rem); letter-spacing: -.04em; }
+.nowbox {
+  min-width: min(460px, 42vw);
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: #3a2a0c;
+  border: 1px solid #7a5a18;
+  color: var(--now);
+  font-weight: 850;
+  font-size: clamp(1.2rem, 2.1vw, 1.8rem);
+}
+.nowbox small { display: block; color: #e7d3a4; font-size: .68em; font-weight: 700; margin-top: 4px; }
+.list {
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  gap: clamp(8px, 1.2vh, 14px);
+}
+.game {
+  display: grid;
+  grid-template-columns: 4.2rem 11rem 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 0 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  min-height: 0;
+}
+.game.now { outline: 3px solid var(--now); background: #3a2a0c; }
+.game.done { opacity: .72; }
+.num { font-weight: 900; font-size: clamp(1.4rem, 2.4vw, 2.2rem); color: var(--wood); }
+.round { font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-size: clamp(.85rem, 1.2vw, 1.1rem); }
+.names { font-weight: 850; font-size: clamp(1.35rem, 2.6vw, 2.3rem); }
+.mark { font-weight: 800; color: var(--now); font-size: clamp(1rem, 1.5vw, 1.25rem); }
+.win { color: var(--win); }

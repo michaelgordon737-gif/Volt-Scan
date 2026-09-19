@@ -1,11 +1,11 @@
 {
-  "name": "VoltScan Market Scanner",
-  "short_name": "VoltScan",
-  "description": "Custom stock watchlist, top gainers and volatility alerts.",
+  "name": "Backyard Cornhole",
+  "short_name": "Cornhole",
+  "description": "Live backyard cornhole scoreboard for Shane and the crew.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#070b14",
-  "theme_color": "#0b1020",
+  "background_color": "#140e08",
+  "theme_color": "#1a1208",
   "icons": [
     {
       "src": "/icon.svg",
