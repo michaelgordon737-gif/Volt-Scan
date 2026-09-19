@@ -10,6 +10,15 @@ const DEFAULT_CODE = "VS-FRIENDS";
 const DEFAULT_NAME = "Friends Cup";
 const HOST_PLAYER_ID = "host-shane";
 const HOST_PLAYER_NAME = "Shane";
+const FRIENDS_ROSTER = [
+  { id: HOST_PLAYER_ID, name: HOST_PLAYER_NAME },
+  { id: "player-braden", name: "Braden" },
+  { id: "player-noah", name: "Noah" },
+  { id: "player-jessie", name: "Jessie" },
+  { id: "player-blake", name: "Blake" },
+  { id: "player-andrew", name: "Andrew" },
+  { id: "player-geo-pock", name: "Geo Pock" },
+];
 
 function storePath(env = process.env) {
   return env.VOLTSCAN_TOURNAMENT_FILE
@@ -70,15 +79,15 @@ function defaultTournament(at = new Date()) {
     createdAt: nowIso(at),
     startsAt: nowIso(at),
     endsAt: nowIso(addDays(at, DEFAULT_DAYS)),
-    players: [hostPlayer(at)],
+    players: FRIENDS_ROSTER.map((entry) => rosterPlayer(entry, at)),
     trades: [],
   };
 }
 
-function hostPlayer(at = new Date()) {
+function rosterPlayer(entry, at = new Date()) {
   return {
-    id: HOST_PLAYER_ID,
-    name: HOST_PLAYER_NAME,
+    id: entry.id,
+    name: entry.name,
     cash: DEFAULT_STARTING_CASH,
     positions: {},
     joinedAt: nowIso(at),
@@ -88,8 +97,12 @@ function hostPlayer(at = new Date()) {
 function ensureDefault(store, at = new Date()) {
   if (!store.tournaments.length) store.tournaments.push(defaultTournament(at));
   const cup = store.tournaments.find((t) => t.id === DEFAULT_CODE);
-  if (cup && !cup.players.some((p) => p.name.toLowerCase() === HOST_PLAYER_NAME.toLowerCase())) {
-    cup.players.unshift(hostPlayer(at));
+  if (!cup) return store;
+  for (const entry of FRIENDS_ROSTER) {
+    const exists = cup.players.some((p) =>
+      p.id === entry.id || p.name.toLowerCase() === entry.name.toLowerCase()
+    );
+    if (!exists) cup.players.push(rosterPlayer(entry, at));
   }
   return store;
 }
@@ -250,4 +263,5 @@ module.exports = {
   defaultTournament,
   HOST_PLAYER_ID,
   HOST_PLAYER_NAME,
+  FRIENDS_ROSTER,
 };
