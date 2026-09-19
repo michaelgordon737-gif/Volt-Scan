@@ -1,4 +1,7 @@
 {
   "install": "npm ci",
-  "start": "node server.js"
+  "start": "node server.js",
+  "ports": [
+    { "name": "VoltScan", "port": 3000 }
+  ]
 }
