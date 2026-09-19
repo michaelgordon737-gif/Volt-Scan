@@ -142,6 +142,7 @@ test("cornhole HTTP routes score a bag and serve the board at /", async (t) => {
   assert.equal(home.status, 200);
   assert.match(home.body, /Tonight's Cornhole/);
   assert.match(home.body, /cornhole\.js/);
+  assert.doesNotMatch(home.body, /Who am I|canvas|Pull the bag/);
 
   const listed = JSON.parse((await get(port, "/api/cornhole")).body);
   assert.ok(listed.schedule.now);
